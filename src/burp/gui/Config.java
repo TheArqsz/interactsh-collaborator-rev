@@ -5,7 +5,7 @@ import burp.api.montoya.persistence.Preferences;
 
 public class Config {
 
-	private static final String DEFAULT_SERVER = "oast.pro";
+	private static final String DEFAULT_SERVER = "oast.live";
 	private static final String DEFAULT_PORT = "443";
 	private static final String DEFAULT_AUTHORIZATION = "";
 	private static final String DEFAULT_POLL_INTERVAL = "60";
