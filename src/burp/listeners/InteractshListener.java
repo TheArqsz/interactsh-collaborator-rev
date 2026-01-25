@@ -1,21 +1,20 @@
 package burp.listeners;
 
-import interactsh.InteractshClient;
-
-import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+
 import javax.swing.SwingUtilities;
+
+import interactsh.InteractshClient;
 
 public class InteractshListener {
 	private final ExecutorService executor;
 	private volatile InteractshClient client;
 	private final Semaphore pollSignal = new Semaphore(0);
-
 
 	public InteractshListener(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
 		this.executor = Executors.newSingleThreadExecutor();
@@ -98,7 +97,8 @@ public class InteractshListener {
 
 			// Try to copy to the system selection clipboard (for Linux primary selection)
 			try {
-				java.awt.datatransfer.Clipboard systemSelection = java.awt.Toolkit.getDefaultToolkit().getSystemSelection();
+				java.awt.datatransfer.Clipboard systemSelection = java.awt.Toolkit.getDefaultToolkit()
+						.getSystemSelection();
 				if (systemSelection != null) {
 					systemSelection.setContents(stringSelection, null);
 					atLeastOneSucceeded = true;

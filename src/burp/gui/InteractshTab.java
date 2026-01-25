@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
@@ -49,6 +50,7 @@ import javax.swing.table.JTableHeader;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableModel;
 import javax.swing.table.TableRowSorter;
+
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
@@ -57,7 +59,6 @@ import burp.listeners.InteractshListener;
 import interactsh.InteractshEntry;
 import layout.SpringUtilities;
 import lombok.Getter;
-import lombok.Setter;
 
 public class InteractshTab extends JComponent {
 	private final MontoyaApi api;
@@ -92,9 +93,8 @@ public class InteractshTab extends JComponent {
 	public InteractshTab(MontoyaApi api) {
 		this.api = api;
 		this.listener = new InteractshListener(
-			newUrl -> ToastNotification.showToast(this, "✓ Interactsh session ready.", MessageType.SUCCESS),
-			errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR)
-		);
+				newUrl -> ToastNotification.showToast(this, "✓ Interactsh session ready.", MessageType.SUCCESS),
+				errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
 
 		setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
 
@@ -186,27 +186,28 @@ public class InteractshTab extends JComponent {
 		generateUrlButton.addActionListener(e -> {
 			listener.close();
 			listener = new InteractshListener(
-				newUrl -> {
-					StringSelection stringSelection = new StringSelection(newUrl);
-					try {
-						Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection,
-								null);
-						Toolkit.getDefaultToolkit().getSystemSelection().setContents(stringSelection,
-								null);
-					} catch (Exception ex) {
-						api.logging().logToError("Clipboard issue: " + ex.getMessage());
-					}
-					api.logging().logToOutput("Generated and copied new Interact.sh URL: " + newUrl);
-					ToastNotification.showToast(this, "✓ Regenerated and copied new Interact.sh URL.", MessageType.SUCCESS);
-				},
-				errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR)
-			);
+					newUrl -> {
+						StringSelection stringSelection = new StringSelection(newUrl);
+						try {
+							Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection,
+									null);
+							Toolkit.getDefaultToolkit().getSystemSelection().setContents(stringSelection,
+									null);
+						} catch (Exception ex) {
+							api.logging().logToError("Clipboard issue: " + ex.getMessage());
+						}
+						api.logging().logToOutput("Generated and copied new Interact.sh URL: " + newUrl);
+						ToastNotification.showToast(this, "✓ Regenerated and copied new Interact.sh URL.",
+								MessageType.SUCCESS);
+					},
+					errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
 		});
 		copyUrlButton.addActionListener(e -> {
 			if (this.listener.copyCurrentUrlToClipboard()) {
 				ToastNotification.showToast(this, "URL copied to clipboard.", MessageType.INFO);
 			} else {
-				ToastNotification.showToast(this, "❌ Failed to copy. Client not ready or registered.", MessageType.ERROR);
+				ToastNotification.showToast(this, "❌ Failed to copy. Client not ready or registered.",
+						MessageType.ERROR);
 			}
 		});
 		refreshButton.addActionListener(e -> {
@@ -234,7 +235,7 @@ public class InteractshTab extends JComponent {
 		filterLabel.setEnabled(false);
 		filterPanel.add(filterLabel);
 		ButtonGroup filterGroup = new ButtonGroup();
-		String[] protocols = {"All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "FTP"};
+		String[] protocols = { "All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "FTP" };
 
 		for (String protocol : protocols) {
 			JToggleButton filterButton = new JToggleButton(protocol);
@@ -315,9 +316,9 @@ public class InteractshTab extends JComponent {
 				}
 				this.listener.close();
 				this.listener = new InteractshListener(
-					newUrl -> ToastNotification.showToast(this, "✓ New session started with updated config.", MessageType.SUCCESS),
-					errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR)
-				);
+						newUrl -> ToastNotification.showToast(this, "✓ New session started with updated config.",
+								MessageType.SUCCESS),
+						errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
 			} else {
 				api.logging().logToOutput("Poll interval updated. Triggering immediate poll.");
 				if (listener != null) {
@@ -338,8 +339,7 @@ public class InteractshTab extends JComponent {
 
 		JPanel documentationPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
 
-		String documentationUrl =
-				"https://github.com/projectdiscovery/interactsh?tab=readme-ov-file#using-self-hosted-server";
+		String documentationUrl = "https://github.com/projectdiscovery/interactsh?tab=readme-ov-file#using-self-hosted-server";
 		String linkHtml = "<html><b>View <a href=\"" + documentationUrl
 				+ "\">the list of public Interactsh servers</a> on ProjectDiscovery's GitHub</b></html>";
 
@@ -549,8 +549,10 @@ public class InteractshTab extends JComponent {
 	private class LogTable extends AbstractTableModel {
 		public enum Column {
 			ID("ID", Integer.class, 50, 80), ENTRY("Entry", String.class, 120, -1), TYPE("Type",
-					String.class, 70, 100), SOURCE_IP("Source IP address", String.class, 120,
-							-1), TIME("Time", Instant.class, 150, -1);
+					String.class, 70, 100),
+			SOURCE_IP("Source IP address", String.class, 120,
+					-1),
+			TIME("Time", Instant.class, 150, -1);
 
 			@Getter
 			private final String name;
