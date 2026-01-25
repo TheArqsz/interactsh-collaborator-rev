@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - master
-
   pull_request:
     types:
       - closed
@@ -22,7 +21,8 @@ jobs:
     name: Release and Publish
     if: |
         github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'push'|| github.event.pull_request.merged == true
+        github.event_name == 'push' ||
+        github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     permissions:
@@ -41,28 +41,69 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
+      - name: Generate Changelog and Bump Version
+        id: changelog
+        uses: TriPSs/conventional-changelog-action@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          output-file: "CHANGELOG.md"
+          tag-prefix: "v"
+          release-count: 0
+          preset: conventionalcommits
+          skip-commit: true
+          git-push: false
+
+      - name: Bump Maven Version
+        if: steps.changelog.outputs.skipped == 'false'
+        run: |
+          echo "Bumping version to ${{ steps.changelog.outputs.version }}"
+          mvn versions:set -DnewVersion=${{ steps.changelog.outputs.version }} -DgenerateBackupPoms=false
+
+      - name: Commit & Push Version Bump
+        if: steps.changelog.outputs.skipped == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pom.xml CHANGELOG.md
+          git commit -m "chore(release): bump version to ${{ steps.changelog.outputs.version }}"
+          git push
+
       - name: Build project with Maven
+        if: steps.changelog.outputs.skipped == 'false'
         run: mvn clean package -DskipTests -B
 
-      - name: Bump version and push tag
-        id: tag_version
-        uses: erodozer/github-tag-action@fix-tag-existing
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          fetch_all_tags: true
-          default_bump: false
-          force_update: true
-
-      - name: Rename artifact
+      - name: Rename artifacts
+        if: steps.changelog.outputs.skipped == 'false'
         id: rename_artifact
         run: |
           cp ./target/collaborator-*-jar-with-dependencies.jar ./target/interactsh-collaborator.jar
+          cp ./target/collaborator-*-jar-with-dependencies.jar ./target/interactsh-collaborator-${{ steps.changelog.outputs.tag }}.jar
 
-      - name: Create a GitHub release
-        uses: ncipollo/release-action@v1
-        if: steps.tag_version.outputs.new_version != ''
+      - name: Create GitHub Release
+        if: steps.changelog.outputs.skipped == 'false'
+        uses: softprops/action-gh-release@v2
         with:
-            tag: ${{ steps.tag_version.outputs.new_tag  }}
-            name: ${{ steps.tag_version.outputs.new_tag }}
-            body: ${{ github.event.inputs.release_notes || steps.tag_version.outputs.changelog || format('Official release of version {0}. The attached JAR file contains the compiled application and all dependencies.', steps.tag_version.outputs.new_version ) }}
-            artifacts: ./target/interactsh-collaborator.jar
+          files: |
+            ./target/interactsh-collaborator-${{ steps.changelog.outputs.version }}.jar
+            ./target/interactsh-collaborator.jar
+          draft: false
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          name: Release ${{ steps.changelog.outputs.tag }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          make_latest: true
+          body: |
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.clean_changelog }}
+
+            ${{ github.event.inputs.release_notes && format('## Additional Notes
+
+            {0}', github.event.inputs.release_notes) || '' }}
+
+            ## Installation
+
+            Download `interactsh-collaborator.jar` and add it as a Java extension in Burp Suite.
+
+            ---
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md
