@@ -20,12 +20,7 @@
             <artifactId>json</artifactId>
             <version>20251224</version>
         </dependency>
-        <dependency>
-            <groupId>com.github.0xshamil</groupId>
-            <artifactId>java-xid</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-		<dependency>
+<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<version>1.18.42</version>
@@ -43,10 +38,10 @@
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
-
+                    <appendAssemblyId>false</appendAssemblyId>
                     <archive>
                         <manifest>
-                            <addClasspath>true</addClasspath>
+                            <addClasspath>false</addClasspath>
                         </manifest>
                     </archive>
                 </configuration>
