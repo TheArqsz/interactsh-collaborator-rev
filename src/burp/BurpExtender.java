@@ -18,9 +18,11 @@ public class BurpExtender
 		implements BurpExtension, ContextMenuItemsProvider, ExtensionUnloadingHandler {
 	public static MontoyaApi api;
 	public static InteractshTab tab;
+	public static volatile boolean unloading = false;
 
 	@Override
 	public void initialize(MontoyaApi api) {
+		BurpExtender.unloading = false;
 		BurpExtender.api = api;
 
 		api.extension().setName("Interactsh Collaborator");
@@ -37,8 +39,18 @@ public class BurpExtender
 
 	@Override
 	public void extensionUnloaded() {
-		BurpExtender.tab.cleanup();
-		BurpExtender.api.logging().logToOutput("Thanks for collaborating!");
+		BurpExtender.unloading = true;
+		if (BurpExtender.tab != null) {
+			BurpExtender.tab.cleanup();
+		}
+		if (BurpExtender.api != null) {
+			try {
+				BurpExtender.api.logging().logToOutput("Thanks for collaborating!");
+			} catch (Exception ignored) {
+			}
+		}
+		BurpExtender.api = null;
+		BurpExtender.tab = null;
 	}
 
 	public static int getPollTime() {
@@ -51,6 +63,12 @@ public class BurpExtender
 
 	public static void addToTable(InteractshEntry i) {
 		BurpExtender.tab.addToTable(i);
+	}
+
+	public static void debugLog(String message) {
+		if (api != null && !unloading && burp.gui.Config.isDebugEnabled()) {
+			api.logging().logToOutput(message);
+		}
 	}
 
 	@Override
