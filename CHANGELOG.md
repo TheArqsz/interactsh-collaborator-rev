@@ -11,6 +11,7 @@
 ### Bug Fixes
 
 * **build:** remove java-xid dependency and fix fat JAR assembly ([62bbfe9](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/62bbfe9f92cc5e12f3ecc212fcf186017a7d7073))
+* **ci:** update artifact rename glob to match fat JAR naming after appendAssemblyId=false ([170e1a8](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/170e1a8acee9f0bceaf7095d0cd6a5a2c81d1587))
 * **core:** add pre-flight DNS check and fix UnknownHostException detection ([a1b89bf](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/a1b89bfd48228c008ce92738ddecce2113783c9a))
 * **core:** replace Xid with UUID, fix AES decryption (byte key, correct slice, CTR/CFB auto-detect) ([9415dc9](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/9415dc9031e7ac4f3767641c2c7d78f113c99f05))
 * **threading:** resolve interrupt race and unloading safety in polling loop ([98cf153](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/98cf153d7bb96d57388583c37d93d6e0ce34f14a))
