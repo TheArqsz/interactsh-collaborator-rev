@@ -41,8 +41,11 @@ public class InteractshListener {
 			this.client = new InteractshClient();
 			if (client.register()) {
 				Thread.interrupted();
+				String newUrl = client.getInteractDomain();
+				if (burp.BurpExtender.api != null) {
+					burp.BurpExtender.api.logging().logToOutput("Session URL: " + newUrl);
+				}
 				if (onReadyCallback != null) {
-					String newUrl = client.getInteractDomain();
 					SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
