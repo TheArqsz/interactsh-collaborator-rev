@@ -7,18 +7,14 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import java.awt.Color;
-import java.awt.Component;
-import java.awt.Frame;
 import java.awt.Graphics;
+import java.awt.Window;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.RoundRectangle2D;
 
 public class ToastNotification extends JDialog {
 
-    /**
-     * Defines the notification type, which controls the background color.
-     */
     public enum MessageType {
         SUCCESS(new Color(34, 139, 34)),
         ERROR(new Color(178, 34, 34)),
@@ -35,22 +31,16 @@ public class ToastNotification extends JDialog {
         }
     }
 
-    /**
-     * Creates and displays a toast notification.
-     *
-     * @param parentComponent The component from which to find the parent Burp frame.
-     * @param message         The message to display.
-     * @param type            The type of message (SUCCESS, ERROR, INFO).
-     */
-    public static void showToast(Component parentComponent, String message, MessageType type) {
+    public static void showToast(String message, MessageType type) {
         SwingUtilities.invokeLater(() -> {
-            Frame owner = (Frame) SwingUtilities.getWindowAncestor(parentComponent);
+            if (burp.BurpExtender.api == null) return;
+            Window owner = (Window) burp.BurpExtender.api.userInterface().swingUtils().suiteFrame();
             ToastNotification toast = new ToastNotification(owner, message, type);
-            
+
             int x = owner.getX() + owner.getWidth() - toast.getWidth() - 20;
-            int y = owner.getY() + owner.getHeight() - toast.getHeight() - 40; 
+            int y = owner.getY() + owner.getHeight() - toast.getHeight() - 40;
             toast.setLocation(x, y);
-            
+
             toast.setVisible(true);
 
             new Timer(4000, e -> {
@@ -62,15 +52,15 @@ public class ToastNotification extends JDialog {
         });
     }
 
-    private ToastNotification(Frame owner, String message, MessageType type) {
+    private ToastNotification(Window owner, String message, MessageType type) {
         super(owner);
         setUndecorated(true);
-        setBackground(new Color(0, 0, 0, 0)); 
-        
+        setBackground(new Color(0, 0, 0, 0));
+
         JLabel label = new JLabel(message);
         label.setForeground(Color.WHITE);
         label.setBorder(new EmptyBorder(10, 15, 10, 15));
-        
+
         setContentPane(new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -82,8 +72,8 @@ public class ToastNotification extends JDialog {
                 super.paintComponent(g);
             }
         });
-        
-        ((JPanel)getContentPane()).setOpaque(false);
+
+        ((JPanel) getContentPane()).setOpaque(false);
         add(label);
         pack();
     }
