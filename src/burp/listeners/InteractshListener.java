@@ -23,6 +23,20 @@ public class InteractshListener {
 	}
 
 	private void pollingLoop(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
+		String host = burp.gui.Config.getHost();
+		try {
+			java.net.InetAddress.getByName(host);
+		} catch (java.net.UnknownHostException e) {
+			String errorMsg = "Cannot resolve host '" + host + "' - please check the server address in Configuration.";
+			if (burp.BurpExtender.api != null) {
+				burp.BurpExtender.api.logging().logToError(errorMsg);
+			}
+			if (onFailureCallback != null) {
+				SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
+			}
+			return;
+		}
+
 		try {
 			this.client = new InteractshClient();
 			if (client.register()) {
