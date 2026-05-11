@@ -21,8 +21,6 @@ import javax.crypto.spec.SecretKeySpec;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import com.github.shamil.Xid;
-
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
@@ -31,6 +29,10 @@ import lombok.Getter;
 public class InteractshClient {
 	private PrivateKey privateKey;
 	private PublicKey publicKey;
+
+	private static boolean isExtensionActive() {
+		return burp.BurpExtender.api != null && !burp.BurpExtender.unloading;
+	}
 
 	@Getter
 	private final String correlationId;
@@ -41,11 +43,12 @@ public class InteractshClient {
 	private int port;
 	private boolean scheme;
 	@Getter
-	private boolean registered;
+	private volatile boolean registered;
 	private String authorization;
+	private String aesMode;
 
 	public InteractshClient() {
-		this.correlationId = Xid.get().toString();
+		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
 		this.secretKey = UUID.randomUUID().toString();
 
 		KeyPair kp = generateKeys();
@@ -56,6 +59,7 @@ public class InteractshClient {
 		this.host = burp.gui.Config.getHost();
 		this.scheme = burp.gui.Config.getScheme();
 		this.authorization = burp.gui.Config.getAuth();
+		this.aesMode = burp.gui.Config.getAesMode();
 		try {
 			this.port = Integer.parseInt(burp.gui.Config.getPort());
 		} catch (NumberFormatException ne) {
@@ -64,8 +68,9 @@ public class InteractshClient {
 	}
 
 	public boolean register() {
-		burp.BurpExtender.api.logging()
-				.logToOutput("Registering correlation with ID: " + correlationId);
+		if (!isExtensionActive())
+			return false;
+
 		try {
 			JSONObject registerData = new JSONObject();
 			registerData.put("public-key", pubKeyBase64);
@@ -90,36 +95,43 @@ public class InteractshClient {
 
 			HttpService httpService = HttpService.httpService(host, port, scheme);
 			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
+			burp.BurpExtender.debugLog("Sending registration request to " + host + ":" + port + " (TLS=" + scheme + ")");
 			HttpResponse resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
+			burp.BurpExtender.debugLog("Registration response received: " + (resp != null ? resp.statusCode() : "null"));
 
 			if (resp == null) {
-				burp.BurpExtender.api.logging().logToError(
-						"Registration failed: No response received from server. Check your connection/host settings.");
+				if (isExtensionActive()) {
+					burp.BurpExtender.api.logging().logToError(
+							"Registration failed: No response received from server. Check your connection/host settings.");
+				}
 				return false;
 			}
 
 			if (resp.statusCode() == 200) {
 				this.registered = true;
-				burp.BurpExtender.api.logging().logToOutput("Session registration was successful.");
+				burp.BurpExtender.debugLog("Session registration was successful.");
 				return true;
 			} else {
-				burp.BurpExtender.api.logging().logToError(
-						"Registration was unsuccessful. Status Code: " + resp.statusCode());
-				burp.BurpExtender.api.logging()
-						.logToError("Error message: \n\n" + resp.bodyToString());
+				if (isExtensionActive()) {
+					burp.BurpExtender.api.logging().logToError(
+							"Registration failed with status " + resp.statusCode() + ": " + resp.bodyToString());
+				}
 			}
 		} catch (Exception ex) {
-			if (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException")) {
-				burp.BurpExtender.api.logging().logToError(
-						"Registration failed - the host '" + host + "' could not be resolved.");
-			} else {
-				burp.BurpExtender.api.logging().logToError(ex.getMessage());
+			if (isExtensionActive()) {
+				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
+						? "Registration failed - the host '" + host + "' could not be resolved."
+						: "Registration error: " + ex.getMessage();
+				burp.BurpExtender.api.logging().logToError(msg);
 			}
 		}
 		return false;
 	}
 
 	public boolean poll() {
+		if (!isExtensionActive())
+			return false;
+
 		StringBuilder requestBuilder = new StringBuilder();
 
 		requestBuilder.append("GET /poll?id=").append(correlationId).append("&secret=")
@@ -138,40 +150,47 @@ public class InteractshClient {
 		HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
 		HttpResponse resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		if (resp == null || resp.statusCode() != 200) {
-			burp.BurpExtender.api.logging().logToError("Session with correlation ID "
-					+ correlationId + " was unsuccessful - status returned: " + resp.statusCode());
+			if (isExtensionActive()) {
+				burp.BurpExtender.api.logging().logToError("Poll failed - status: "
+						+ (resp != null ? resp.statusCode() : "no response"));
+			}
 			return false;
 		}
 
 		String responseBody = resp.bodyToString();
+		if (responseBody == null || responseBody.isEmpty()) {
+			return true;
+		}
+
 		try {
 			JSONObject jsonObject = new JSONObject(responseBody);
 			String aesKey = jsonObject.getString("aes_key");
-			String key = this.decryptAesKey(aesKey);
-
+			byte[] key = this.decryptAesKey(aesKey);
 			if (!jsonObject.isNull("data")) {
 				JSONArray data = jsonObject.getJSONArray("data");
 				for (int i = 0; i < data.length(); i++) {
 					String decryptedData = decryptData(data.getString(i), key);
-
-					InteractshEntry entry = new InteractshEntry(decryptedData);
-					burp.BurpExtender.addToTable(entry);
+					if (isExtensionActive()) {
+						InteractshEntry entry = new InteractshEntry(decryptedData);
+						burp.BurpExtender.addToTable(entry);
+					}
 				}
 			}
 		} catch (Exception ex) {
-			if (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException")) {
-				burp.BurpExtender.api.logging().logToError(
-						"Polling failed - the host '" + host + "' could not be resolved.");
-			} else {
-				burp.BurpExtender.api.logging().logToError(ex.getMessage());
+			if (isExtensionActive()) {
+				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
+						? "Polling failed - the host '" + host + "' could not be resolved."
+						: "Polling error: " + ex.getMessage();
+				burp.BurpExtender.api.logging().logToError(msg);
 			}
 		}
 		return true;
 	}
 
 	public void deregister() {
-		burp.BurpExtender.api.logging()
-				.logToOutput("Deregistering correlation with ID: " + correlationId);
+		if (!isExtensionActive())
+			return;
+
 		try {
 			JSONObject deregisterData = new JSONObject();
 			deregisterData.put("correlation-id", correlationId);
@@ -197,11 +216,11 @@ public class InteractshClient {
 			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
 			burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		} catch (Exception ex) {
-			if (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException")) {
-				burp.BurpExtender.api.logging().logToError(
-						"Deregister failed - the host '" + host + "' could not be resolved.");
-			} else {
-				burp.BurpExtender.api.logging().logToError(ex.getMessage());
+			if (isExtensionActive()) {
+				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
+						? "Deregister failed - the host '" + host + "' could not be resolved."
+						: "Deregister error: " + ex.getMessage();
+				burp.BurpExtender.api.logging().logToError(msg);
 			}
 		}
 	}
@@ -212,7 +231,6 @@ public class InteractshClient {
 		} else {
 			String fullDomain = correlationId;
 
-			// Fix the string up to 33 characters
 			Random random = new Random();
 			while (fullDomain.length() < 33) {
 				fullDomain += (char) (random.nextInt(26) + 'a');
@@ -244,31 +262,60 @@ public class InteractshClient {
 		return pubKey;
 	}
 
-	private String decryptAesKey(String encrypted) throws Exception {
+	private byte[] decryptAesKey(String encrypted) throws Exception {
 		byte[] cipherTextArray = Base64.getDecoder().decode(encrypted);
 
 		Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
 		OAEPParameterSpec oaepParams = new OAEPParameterSpec("SHA-256", "MGF1",
 				new MGF1ParameterSpec("SHA-256"), PSource.PSpecified.DEFAULT);
 		cipher.init(Cipher.DECRYPT_MODE, privateKey, oaepParams);
-		byte[] decrypted = cipher.doFinal(cipherTextArray);
-
-		return new String(decrypted);
+		return cipher.doFinal(cipherTextArray);
 	}
 
-	private static String decryptData(String input, String key) throws Exception {
+	private String decryptData(String input, byte[] key) throws Exception {
+		String mode = (this.aesMode == null || this.aesMode.isEmpty()) ? "AUTO" : this.aesMode.toUpperCase();
+
+		if (!"AUTO".equals(mode)) {
+			return decryptDataWithMode(input, key, mode);
+		}
+
+		// AUTO: try CTR first (public servers), then CFB (self-hosted servers).
+		String lastResult = null;
+		for (String candidate : new String[] { "CTR", "CFB" }) {
+			try {
+				String decrypted = decryptDataWithMode(input, key, candidate);
+				if (looksLikeJson(decrypted)) {
+					return decrypted;
+				}
+				lastResult = decrypted;
+			} catch (Exception ignored) {
+			}
+		}
+
+		return lastResult != null ? lastResult : "";
+	}
+
+	private String decryptDataWithMode(String input, byte[] key, String mode) throws Exception {
 		byte[] cipherTextArray = Base64.getDecoder().decode(input);
 		byte[] iv = Arrays.copyOfRange(cipherTextArray, 0, 16);
-		byte[] cipherText = Arrays.copyOfRange(cipherTextArray, 16, cipherTextArray.length - 1);
+		byte[] cipherText = Arrays.copyOfRange(cipherTextArray, 16, cipherTextArray.length);
 
 		IvParameterSpec ivSpec = new IvParameterSpec(iv);
-
-		SecretKeySpec skeySpec = new SecretKeySpec(key.getBytes(), "AES");
-		Cipher cipher = Cipher.getInstance("AES/CFB/NoPadding");
+		SecretKeySpec skeySpec = new SecretKeySpec(key, "AES");
+		Cipher cipher = Cipher.getInstance("AES/" + mode + "/NoPadding");
 		cipher.init(Cipher.DECRYPT_MODE, skeySpec, ivSpec);
 		byte[] decrypted = cipher.doFinal(cipherText);
 
-		return new String(decrypted);
+		return new String(decrypted, StandardCharsets.UTF_8).trim();
+	}
+
+	private boolean looksLikeJson(String value) {
+		if (value == null) {
+			return false;
+		}
+		String candidate = value.trim();
+		return (candidate.startsWith("{") && candidate.endsWith("}"))
+				|| (candidate.startsWith("[") && candidate.endsWith("]"));
 	}
 
 	private String[] splitStringEveryN(String s, int interval) {
