@@ -72,6 +72,16 @@ public class InteractshClient {
 			return false;
 
 		try {
+			java.net.InetAddress.getByName(host);
+		} catch (java.net.UnknownHostException e) {
+			if (isExtensionActive()) {
+				burp.BurpExtender.api.logging().logToError(
+						"Cannot resolve host '" + host + "' - please check the server address in Configuration.");
+			}
+			return false;
+		}
+
+		try {
 			JSONObject registerData = new JSONObject();
 			registerData.put("public-key", pubKeyBase64);
 			registerData.put("secret-key", secretKey);
@@ -119,8 +129,8 @@ public class InteractshClient {
 			}
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
-				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
-						? "Registration failed - the host '" + host + "' could not be resolved."
+				String msg = (ex instanceof java.net.UnknownHostException)
+						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Registration error: " + ex.getMessage();
 				burp.BurpExtender.api.logging().logToError(msg);
 			}
@@ -178,8 +188,8 @@ public class InteractshClient {
 			}
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
-				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
-						? "Polling failed - the host '" + host + "' could not be resolved."
+				String msg = (ex instanceof java.net.UnknownHostException)
+						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Polling error: " + ex.getMessage();
 				burp.BurpExtender.api.logging().logToError(msg);
 			}
@@ -217,8 +227,8 @@ public class InteractshClient {
 			burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
-				String msg = (ex.getMessage() != null && ex.getMessage().contains("UnknownHostException"))
-						? "Deregister failed - the host '" + host + "' could not be resolved."
+				String msg = (ex instanceof java.net.UnknownHostException)
+						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Deregister error: " + ex.getMessage();
 				burp.BurpExtender.api.logging().logToError(msg);
 			}
