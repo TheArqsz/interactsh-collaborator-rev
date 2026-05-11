@@ -25,10 +25,10 @@ public class BurpExtender
 		BurpExtender.unloading = false;
 		BurpExtender.api = api;
 
-		api.extension().setName("Interactsh Collaborator");
+		api.extension().setName("Interactsh Collaborator (rev)");
 		api.userInterface().registerContextMenuItemsProvider(this);
 		api.extension().registerUnloadingHandler(this);
-		api.logging().logToOutput("Starting Interactsh Collaborator");
+		api.logging().logToOutput("Interactsh Collaborator (rev) by Arqsz");
 
 		burp.gui.Config.generateConfig();
 		BurpExtender.tab = new InteractshTab(api);
