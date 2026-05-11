@@ -10,6 +10,8 @@ public class Config {
 	private static final String DEFAULT_AUTHORIZATION = "";
 	private static final String DEFAULT_POLL_INTERVAL = "60";
 	private static final String DEFAULT_USES_TLS = "true";
+	private static final String DEFAULT_AES_MODE = "AUTO";
+	private static final String DEFAULT_DEBUG_LOGGING = "false";
 
 	private static Preferences preferences() {
 		return BurpExtender.api.persistence().preferences();
@@ -27,6 +29,8 @@ public class Config {
 			preferences().setString("interactsh-authorization", DEFAULT_AUTHORIZATION);
 			preferences().setString("interactsh-poll-time", DEFAULT_POLL_INTERVAL);
 			preferences().setString("interactsh-uses-tls", DEFAULT_USES_TLS);
+			preferences().setString("interactsh-aes-mode", DEFAULT_AES_MODE);
+			preferences().setString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
 		}
 	}
 
@@ -36,12 +40,16 @@ public class Config {
 		String tls = getString("interactsh-uses-tls", DEFAULT_USES_TLS);
 		String authorization = getString("interactsh-authorization", DEFAULT_AUTHORIZATION);
 		String pollInterval = getString("interactsh-poll-time", DEFAULT_POLL_INTERVAL);
+		String aesMode = getString("interactsh-aes-mode", DEFAULT_AES_MODE);
+		String debugLogging = getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
 
 		InteractshTab.setServerText(server);
 		InteractshTab.setPortText(port);
 		InteractshTab.setAuthText(authorization);
 		InteractshTab.setPollText(pollInterval);
 		InteractshTab.setTlsBox(Boolean.parseBoolean(tls));
+		InteractshTab.setAesModeText(aesMode);
+		InteractshTab.setDebugLogging(Boolean.parseBoolean(debugLogging));
 	}
 
 	public static void updateConfig() {
@@ -50,12 +58,16 @@ public class Config {
 		String authorization = InteractshTab.getAuthText();
 		String pollInterval = InteractshTab.getPollText();
 		String tls = InteractshTab.getTlsBox();
+		String aesMode = InteractshTab.getAesModeText();
+		String debugLogging = InteractshTab.getDebugLogging();
 
 		preferences().setString("interactsh-server", server);
 		preferences().setString("interactsh-port", port);
 		preferences().setString("interactsh-uses-tls", tls);
 		preferences().setString("interactsh-poll-time", pollInterval);
 		preferences().setString("interactsh-authorization", authorization);
+		preferences().setString("interactsh-aes-mode", aesMode);
+		preferences().setString("interactsh-debug-logging", debugLogging);
 	}
 
 	public static String getHost() {
@@ -76,5 +88,13 @@ public class Config {
 
 	public static String getPollInterval() {
 		return getString("interactsh-poll-time", DEFAULT_POLL_INTERVAL);
+	}
+
+	public static String getAesMode() {
+		return getString("interactsh-aes-mode", DEFAULT_AES_MODE);
+	}
+
+	public static boolean isDebugEnabled() {
+		return Boolean.parseBoolean(getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING));
 	}
 }
