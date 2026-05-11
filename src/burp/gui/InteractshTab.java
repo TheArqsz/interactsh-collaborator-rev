@@ -25,6 +25,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
@@ -79,6 +80,8 @@ public class InteractshTab extends JComponent {
 	private static JTextField authText;
 	private static JTextField pollText;
 	private static JCheckBox tlsBox;
+	private static JComboBox<String> aesModeBox;
+	private static JCheckBox debugLoggingBox;
 
 	private final List<InteractshEntry> log = new ArrayList<>();
 	private InteractshListener listener;
@@ -93,8 +96,8 @@ public class InteractshTab extends JComponent {
 	public InteractshTab(MontoyaApi api) {
 		this.api = api;
 		this.listener = new InteractshListener(
-				newUrl -> ToastNotification.showToast(this, "✓ Interactsh session ready.", MessageType.SUCCESS),
-				errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
+				newUrl -> ToastNotification.showToast("✓ Interactsh session ready.", MessageType.SUCCESS),
+				errorMsg -> ToastNotification.showToast("❌ " + errorMsg, MessageType.ERROR));
 
 		setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
 
@@ -102,14 +105,12 @@ public class InteractshTab extends JComponent {
 		splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 		mainPane.addTab("Logs", splitPane);
 
-		// HTTP/-s traffic viewer
 		requestViewer = api.userInterface().createHttpRequestEditor();
 		responseViewer = api.userInterface().createHttpResponseEditor();
 		JSplitPane viewersSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
 				requestViewer.uiComponent(), responseViewer.uiComponent());
 		viewersSplitPane.setResizeWeight(0.5);
 
-		// Generic viewer
 		resultsPanel = new JPanel(new BorderLayout());
 		genericDetailsViewer = new JTextArea();
 		genericDetailsViewer.setEditable(false);
@@ -177,11 +178,24 @@ public class InteractshTab extends JComponent {
 		pollField.setBorder(null);
 		pollField.setForeground(UIManager.getColor("Label.foreground"));
 
-		copyUrlButton.setBackground(new Color(216, 102, 51));
+		Color copyButtonColor = new Color(216, 102, 51);
+		Color copyButtonHoverColor = new Color(190, 82, 35);
+		copyUrlButton.setBackground(copyButtonColor);
 		copyUrlButton.setForeground(Color.WHITE);
 		copyUrlButton.setOpaque(true);
 		copyUrlButton.setFont(copyUrlButton.getFont().deriveFont(Font.BOLD));
 		copyUrlButton.setBorderPainted(false);
+		copyUrlButton.addMouseListener(new java.awt.event.MouseAdapter() {
+			@Override
+			public void mouseEntered(java.awt.event.MouseEvent e) {
+				copyUrlButton.setBackground(copyButtonHoverColor);
+			}
+
+			@Override
+			public void mouseExited(java.awt.event.MouseEvent e) {
+				copyUrlButton.setBackground(copyButtonColor);
+			}
+		});
 
 		generateUrlButton.addActionListener(e -> {
 			listener.close();
@@ -189,32 +203,32 @@ public class InteractshTab extends JComponent {
 					newUrl -> {
 						StringSelection stringSelection = new StringSelection(newUrl);
 						try {
-							Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection,
-									null);
-							Toolkit.getDefaultToolkit().getSystemSelection().setContents(stringSelection,
-									null);
+							Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
 						} catch (Exception ex) {
-							api.logging().logToError("Clipboard issue: " + ex.getMessage());
 						}
-						api.logging().logToOutput("Generated and copied new Interact.sh URL: " + newUrl);
-						ToastNotification.showToast(this, "✓ Regenerated and copied new Interact.sh URL.",
+						try {
+							java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
+							if (sel != null) sel.setContents(stringSelection, null);
+						} catch (Exception ex) {
+						}
+						ToastNotification.showToast("✓ Regenerated and copied new Interact.sh URL.",
 								MessageType.SUCCESS);
 					},
-					errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
+					errorMsg -> ToastNotification.showToast("❌ " + errorMsg, MessageType.ERROR));
 		});
 		copyUrlButton.addActionListener(e -> {
 			if (this.listener.copyCurrentUrlToClipboard()) {
-				ToastNotification.showToast(this, "URL copied to clipboard.", MessageType.INFO);
+				ToastNotification.showToast("URL copied to clipboard.", MessageType.INFO);
 			} else {
-				ToastNotification.showToast(this, "❌ Failed to copy. Client not ready or registered.",
+				ToastNotification.showToast("❌ Failed to copy. Client not ready or registered.",
 						MessageType.ERROR);
 			}
 		});
 		refreshButton.addActionListener(e -> {
 			if (this.listener.pollNowAll()) {
-				ToastNotification.showToast(this, "Session refreshed.", MessageType.INFO);
+				ToastNotification.showToast("Session refreshed.", MessageType.INFO);
 			} else {
-				ToastNotification.showToast(this, "❌ Failed to refresh session.", MessageType.ERROR);
+				ToastNotification.showToast("❌ Failed to refresh session.", MessageType.ERROR);
 			}
 		});
 		clearLogButton.addActionListener(e -> this.clearLog());
@@ -261,7 +275,6 @@ public class InteractshTab extends JComponent {
 		mainTopPanel.add(filterPanel);
 		splitPane.setTopComponent(mainTopPanel);
 
-		// Configuration pane
 		JPanel configPanel = new JPanel();
 		configPanel.setLayout(new BoxLayout(configPanel, BoxLayout.Y_AXIS));
 		JPanel subConfigPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -278,6 +291,10 @@ public class InteractshTab extends JComponent {
 		pollText = new JTextField(Config.getPollInterval(), 20);
 		tlsBox = new JCheckBox("", true);
 		tlsBox.setSelected(Config.getScheme());
+		aesModeBox = new JComboBox<>(new String[] { "AUTO", "CTR", "CFB" });
+		aesModeBox.setSelectedItem(Config.getAesMode());
+		debugLoggingBox = new JCheckBox("", false);
+		debugLoggingBox.setSelected(Config.isDebugEnabled());
 
 		innerConfig.add(new JLabel("Server: ", SwingConstants.TRAILING));
 		innerConfig.add(serverText);
@@ -289,6 +306,10 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(pollText);
 		innerConfig.add(new JLabel("TLS: ", SwingConstants.TRAILING));
 		innerConfig.add(tlsBox);
+		innerConfig.add(new JLabel("AES Mode: ", SwingConstants.TRAILING));
+		innerConfig.add(aesModeBox);
+		innerConfig.add(new JLabel("Debug Logging: ", SwingConstants.TRAILING));
+		innerConfig.add(debugLoggingBox);
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -309,31 +330,20 @@ public class InteractshTab extends JComponent {
 					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls;
 
 			if (criticalSettingChanged) {
-				api.logging().logToOutput(
-						"Server configuration changed. Creating new Interact.sh session.");
-				if (listener != null) {
-					listener.close();
-				}
+				burp.BurpExtender.debugLog("Server configuration changed. Creating new Interact.sh session.");
+				ToastNotification.showToast("Settings saved. Starting new session...", MessageType.INFO);
 				this.listener.close();
 				this.listener = new InteractshListener(
-						newUrl -> ToastNotification.showToast(this, "✓ New session started with updated config.",
-								MessageType.SUCCESS),
-						errorMsg -> ToastNotification.showToast(this, "❌ " + errorMsg, MessageType.ERROR));
+						newUrl -> ToastNotification.showToast("✓ Session ready.", MessageType.SUCCESS),
+						errorMsg -> ToastNotification.showToast("❌ " + errorMsg, MessageType.ERROR));
 			} else {
-				api.logging().logToOutput("Poll interval updated. Triggering immediate poll.");
-				if (listener != null) {
-					if (listener.pollNowAll()) {
-						ToastNotification.showToast(this, "Poll interval updated.", MessageType.SUCCESS);
-					} else {
-						ToastNotification.showToast(this, "❌ Failed to update poll interval.", MessageType.ERROR);
-					}
-				}
+				ToastNotification.showToast("Settings saved.", MessageType.SUCCESS);
 			}
 		});
 		innerConfig.add(updateConfigButton);
 		innerConfig.add(new JPanel());
 
-		SpringUtilities.makeCompactGrid(innerConfig, 6, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 8, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -395,6 +405,22 @@ public class InteractshTab extends JComponent {
 		tlsBox.setSelected(value);
 	}
 
+	public static String getAesModeText() {
+		return (String) aesModeBox.getSelectedItem();
+	}
+
+	public static void setAesModeText(String mode) {
+		aesModeBox.setSelectedItem(mode);
+	}
+
+	public static String getDebugLogging() {
+		return Boolean.toString(debugLoggingBox.isSelected());
+	}
+
+	public static void setDebugLogging(boolean value) {
+		debugLoggingBox.setSelected(value);
+	}
+
 	private JEditorPane createClickableLink(String html) {
 		JEditorPane editorPane = new JEditorPane("text/html", html);
 		editorPane.setEditable(false);
@@ -408,18 +434,19 @@ public class InteractshTab extends JComponent {
 					try {
 						Desktop.getDesktop().browse(e.getURL().toURI());
 					} catch (IOException | URISyntaxException ex) {
-						api.logging().logToError(ex);
 					}
 				} else {
 					String url = e.getURL().toString();
 					StringSelection stringSelection = new StringSelection(url);
 					try {
-						Toolkit.getDefaultToolkit().getSystemClipboard()
-								.setContents(stringSelection, null);
-						Toolkit.getDefaultToolkit().getSystemSelection()
-								.setContents(stringSelection, null);
+						Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
 					} catch (Exception ex) {
 						api.logging().logToError("Clipboard issue: " + ex.getMessage());
+					}
+					try {
+						java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
+						if (sel != null) sel.setContents(stringSelection, null);
+					} catch (Exception ex) {
 					}
 					api.logging().logToOutput(
 							"Desktop browse is not supported. URL copied to clipboard: " + url);
