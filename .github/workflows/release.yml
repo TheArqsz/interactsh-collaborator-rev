@@ -76,8 +76,8 @@ jobs:
         if: steps.changelog.outputs.skipped == 'false'
         id: rename_artifact
         run: |
-          cp ./target/collaborator-*-jar-with-dependencies.jar ./target/interactsh-collaborator.jar
-          cp ./target/collaborator-*-jar-with-dependencies.jar ./target/interactsh-collaborator-${{ steps.changelog.outputs.tag }}.jar
+          cp ./target/collaborator-*.jar ./target/interactsh-collaborator.jar
+          cp ./target/collaborator-*.jar ./target/interactsh-collaborator-${{ steps.changelog.outputs.tag }}.jar
 
       - name: Create GitHub Release
         if: steps.changelog.outputs.skipped == 'false'
