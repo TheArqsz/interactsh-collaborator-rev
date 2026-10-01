@@ -19,6 +19,7 @@ public class InteractshEntry {
 	public String rawResponse;
 	public String address;
 	public Instant timestamp;
+	public boolean wildcard;
 
 	@Getter
 	@Setter

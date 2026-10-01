@@ -13,6 +13,7 @@ public class Config {
 	private static final String DEFAULT_AES_MODE = "AUTO";
 	private static final String DEFAULT_DEBUG_LOGGING = "false";
 	private static final String DEFAULT_HIDE_SHARED = "true";
+	private static final String DEFAULT_HIDE_WILDCARD = "false";
 	// Server defaults for -cidl and -cidn.
 	private static final int DEFAULT_CID_LENGTH = 20;
 	private static final int DEFAULT_CID_NONCE_LENGTH = 13;
@@ -36,6 +37,7 @@ public class Config {
 			preferences().setString("interactsh-aes-mode", DEFAULT_AES_MODE);
 			preferences().setString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
 			preferences().setString("interactsh-hide-shared", DEFAULT_HIDE_SHARED);
+			preferences().setString("interactsh-hide-wildcard", DEFAULT_HIDE_WILDCARD);
 			preferences().setString("interactsh-cid-length", String.valueOf(DEFAULT_CID_LENGTH));
 			preferences().setString("interactsh-cid-nonce-length", String.valueOf(DEFAULT_CID_NONCE_LENGTH));
 		}
@@ -59,6 +61,7 @@ public class Config {
 		InteractshTab.setAesModeText(aesMode);
 		InteractshTab.setDebugLogging(Boolean.parseBoolean(debugLogging));
 		InteractshTab.setHideShared(Boolean.parseBoolean(hideShared));
+		InteractshTab.setHideWildcard(isHideWildcard());
 		InteractshTab.setCidLengthText(String.valueOf(getCidLength()));
 		InteractshTab.setCidNonceLengthText(String.valueOf(getCidNonceLength()));
 	}
@@ -81,6 +84,7 @@ public class Config {
 		preferences().setString("interactsh-aes-mode", aesMode);
 		preferences().setString("interactsh-debug-logging", debugLogging);
 		preferences().setString("interactsh-hide-shared", hideShared);
+		preferences().setString("interactsh-hide-wildcard", InteractshTab.getHideWildcard());
 		preferences().setString("interactsh-cid-length", InteractshTab.getCidLengthText().trim());
 		preferences().setString("interactsh-cid-nonce-length", InteractshTab.getCidNonceLengthText().trim());
 	}
@@ -141,6 +145,10 @@ public class Config {
 		} catch (NumberFormatException e) {
 			return defaultValue;
 		}
+	}
+
+	public static boolean isHideWildcard() {
+		return Boolean.parseBoolean(getString("interactsh-hide-wildcard", DEFAULT_HIDE_WILDCARD));
 	}
 
 	public static boolean isHideShared() {
