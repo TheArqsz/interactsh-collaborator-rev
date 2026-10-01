@@ -119,7 +119,7 @@ Navigate to the **Configuration** tab to customize settings listed below.
 | **Server** | `oast.live` | Interactsh server hostname |
 | **Port** | `443` | Server port |
 | **TLS** | Enabled | Use HTTPS/TLS connection |
-| **Authorization** | _(empty)_ | Authentication token for private servers |
+| **Token** | _(empty)_ | Authentication token for private servers |
 | **Poll Interval** | `60` sec | How often to check for new interactions |
 
 ### Using Self-Hosted Interactsh

@@ -138,8 +138,8 @@ public class InteractshClient {
 				return true;
 			} else if (resp.statusCode() == 401) {
 				this.lastError = (authorization == null || authorization.isEmpty())
-						? "Server requires a token - set Authorization in Configuration."
-						: "Server rejected the token - check Authorization in Configuration.";
+						? "Server requires a token - set Token in Configuration."
+						: "Server rejected the token - check Token in Configuration.";
 				if (isExtensionActive()) {
 					burp.BurpExtender.api.logging().logToError("Registration failed: " + lastError);
 				}

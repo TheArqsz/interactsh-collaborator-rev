@@ -300,10 +300,11 @@ public class InteractshTab extends JComponent {
 		mainPane.addTab("Configuration", configPanel);
 		configPanel.add(subConfigPanel);
 		JPanel innerConfig = new JPanel();
-		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 370));
+		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 540));
 		innerConfig.setLayout(new SpringLayout());
 		subConfigPanel.add(innerConfig);
 
+		String restartNote = " Changing this starts a new session.";
 		serverText = new JTextField(Config.getHost(), 20);
 		portText = new JTextField(Config.getPort(), 20);
 		authText = new JTextField(Config.getAuth(), 20);
@@ -316,40 +317,44 @@ public class InteractshTab extends JComponent {
 		debugLoggingBox.setSelected(Config.isDebugEnabled());
 		hideSharedBox = new JCheckBox("", true);
 		hideSharedBox.setSelected(Config.isHideShared());
-		hideSharedBox.setToolTipText("Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
-				+ "LDAP full logging). Token-authenticated servers send these to every client.");
-
 		hideWildcardBox = new JCheckBox("", false);
 		hideWildcardBox.setSelected(Config.isHideWildcard());
-		hideWildcardBox.setToolTipText("Hide interactions with the server's root domain that do not belong to this "
-				+ "session. Servers started with -wildcard send these to every client.");
 		cidLengthText = new JTextField(String.valueOf(Config.getCidLength()), 20);
-		cidLengthText.setToolTipText("Must match the server's -cidl value (default 20).");
 		cidNonceLengthText = new JTextField(String.valueOf(Config.getCidNonceLength()), 20);
-		cidNonceLengthText.setToolTipText("Must match the server's -cidn value (default 13).");
 
-		innerConfig.add(new JLabel("Server: ", SwingConstants.TRAILING));
-		innerConfig.add(serverText);
-		innerConfig.add(new JLabel("Port: ", SwingConstants.TRAILING));
-		innerConfig.add(portText);
-		innerConfig.add(new JLabel("Authorization: ", SwingConstants.TRAILING));
-		innerConfig.add(authText);
-		innerConfig.add(new JLabel("Poll Interval (sec): ", SwingConstants.TRAILING));
-		innerConfig.add(pollText);
-		innerConfig.add(new JLabel("TLS: ", SwingConstants.TRAILING));
-		innerConfig.add(tlsBox);
-		innerConfig.add(new JLabel("AES Mode: ", SwingConstants.TRAILING));
-		innerConfig.add(aesModeBox);
-		innerConfig.add(new JLabel("Debug Logging: ", SwingConstants.TRAILING));
-		innerConfig.add(debugLoggingBox);
-		innerConfig.add(new JLabel("Hide shared interactions: ", SwingConstants.TRAILING));
-		innerConfig.add(hideSharedBox);
-		innerConfig.add(new JLabel("Hide wildcard interactions: ", SwingConstants.TRAILING));
-		innerConfig.add(hideWildcardBox);
-		innerConfig.add(new JLabel("Correlation ID length: ", SwingConstants.TRAILING));
-		innerConfig.add(cidLengthText);
-		innerConfig.add(new JLabel("Correlation ID nonce length: ", SwingConstants.TRAILING));
-		innerConfig.add(cidNonceLengthText);
+		addConfigHeading(innerConfig, "Server");
+		addConfigRow(innerConfig, "Server: ", serverText,
+				"Hostname of the interactsh server, without scheme or port." + restartNote);
+		addConfigRow(innerConfig, "Port: ", portText,
+				"Port of the server's HTTP(S) API, usually 443 with TLS and 80 without." + restartNote);
+		addConfigRow(innerConfig, "TLS: ", tlsBox, "Connect to the server over HTTPS." + restartNote);
+		addConfigRow(innerConfig, "Token: ", authText,
+				"Token for servers started with -auth or -token. Leave empty for public servers." + restartNote);
+
+		addConfigHeading(innerConfig, "Server compatibility");
+		addConfigRow(innerConfig, "Correlation ID length: ", cidLengthText,
+				"Must match the server's -cidl value (default 20)." + restartNote);
+		addConfigRow(innerConfig, "Nonce length: ", cidNonceLengthText,
+				"Must match the server's -cidn value (default 13)." + restartNote);
+		addConfigRow(innerConfig, "AES Mode: ", aesModeBox,
+				"Cipher mode used to decrypt interactions. AUTO tries CTR (current servers) and then CFB (older "
+						+ "self-hosted servers).");
+
+		addConfigHeading(innerConfig, "Polling");
+		addConfigRow(innerConfig, "Poll Interval (sec): ", pollText,
+				"Seconds between automatic polls. The Refresh button polls immediately.");
+
+		addConfigHeading(innerConfig, "Display");
+		addConfigRow(innerConfig, "Hide shared interactions: ", hideSharedBox,
+				"Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
+						+ "LDAP full logging). Token-authenticated servers send these to every client.");
+		addConfigRow(innerConfig, "Hide wildcard interactions: ", hideWildcardBox,
+				"Hide interactions with the server's root domain that do not belong to this "
+						+ "session. Servers started with -wildcard send these to every client.");
+
+		addConfigHeading(innerConfig, "Diagnostics");
+		addConfigRow(innerConfig, "Debug Logging: ", debugLoggingBox,
+				"Write registration and session details to the extension's output log.");
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -395,7 +400,7 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(updateConfigButton);
 		innerConfig.add(new JPanel());
 
-		SpringUtilities.makeCompactGrid(innerConfig, 12, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 17, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -411,6 +416,21 @@ public class InteractshTab extends JComponent {
 		configPanel.add(documentationPanel);
 
 		add(mainPane);
+	}
+
+	private static void addConfigHeading(JPanel panel, String title) {
+		JLabel heading = new JLabel(title, SwingConstants.LEADING);
+		heading.setFont(heading.getFont().deriveFont(Font.BOLD));
+		panel.add(heading);
+		panel.add(new JPanel());
+	}
+
+	private static void addConfigRow(JPanel panel, String label, JComponent field, String toolTip) {
+		JLabel rowLabel = new JLabel(label, SwingConstants.TRAILING);
+		rowLabel.setToolTipText(toolTip);
+		field.setToolTipText(toolTip);
+		panel.add(rowLabel);
+		panel.add(field);
 	}
 
 	public InteractshListener getListener() {
