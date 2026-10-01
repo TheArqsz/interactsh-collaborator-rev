@@ -136,6 +136,13 @@ public class InteractshClient {
 				this.sessionLost = false;
 				burp.BurpExtender.debugLog("Session registration was successful.");
 				return true;
+			} else if (resp.statusCode() == 401) {
+				this.lastError = (authorization == null || authorization.isEmpty())
+						? "Server requires a token - set Authorization in Configuration."
+						: "Server rejected the token - check Authorization in Configuration.";
+				if (isExtensionActive()) {
+					burp.BurpExtender.api.logging().logToError("Registration failed: " + lastError);
+				}
 			} else {
 				if (isExtensionActive()) {
 					burp.BurpExtender.api.logging().logToError(
