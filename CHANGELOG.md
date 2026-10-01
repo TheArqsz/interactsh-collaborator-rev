@@ -1,3 +1,16 @@
+## [1.5.0](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.4.0...v1.5.0) (2026-10-01)
+
+
+### Features
+
+* **ui:** label and hide shared interactions, add Responder filter ([aebd5b8](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/aebd5b866f17afecf34b704a9e7026c4e5317589))
+
+
+### Bug Fixes
+
+* **core:** read token-scoped interactions from poll extra field ([5de5bea](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/5de5bea8b15c3dabef4bf84a2f37a1c1bdb091b3))
+* **ui:** keep copy URL button colour on hover ([d4d9cc4](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/d4d9cc4e212f1652902abcc430a0b19a2225ad95))
+
 ## [1.4.0](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.3.0...v1.4.0) (2026-05-11)
 
 
