@@ -218,7 +218,9 @@ public class InteractshClient {
 	}
 
 	public void deregister() {
-		if (!isExtensionActive())
+		// Runs during unload too, so it only needs the API handle, not an active extension.
+		burp.api.montoya.MontoyaApi api = burp.BurpExtender.api;
+		if (api == null)
 			return;
 
 		try {
@@ -244,13 +246,22 @@ public class InteractshClient {
 
 			HttpService httpService = HttpService.httpService(host, port, scheme);
 			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
-			burp.BurpExtender.api.http().sendRequest(httpRequest).response();
+			HttpResponse resp = api.http().sendRequest(httpRequest).response();
+			this.registered = false;
+			if (resp == null || resp.statusCode() != 200) {
+				api.logging().logToError("Deregistration failed - status: "
+						+ (resp != null ? resp.statusCode() : "no response"));
+			} else {
+				burp.BurpExtender.debugLog("Session " + correlationId + " deregistered.");
+			}
 		} catch (Exception ex) {
-			if (isExtensionActive()) {
+			this.registered = false;
+			try {
 				String msg = (ex instanceof java.net.UnknownHostException)
 						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Deregister error: " + ex.getMessage();
-				burp.BurpExtender.api.logging().logToError(msg);
+				api.logging().logToError(msg);
+			} catch (Exception ignore) {
 			}
 		}
 	}

@@ -75,7 +75,9 @@ public class InteractshListener {
 				SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
 			}
 		} finally {
-			if (!stopped && client != null && client.isRegistered()) {
+			if (client != null && client.isRegistered()) {
+				// close() interrupts this thread; clear the flag so the request can be sent.
+				Thread.interrupted();
 				client.deregister();
 			}
 		}
@@ -86,20 +88,29 @@ public class InteractshListener {
 		pollSignal.release();
 		executor.shutdownNow();
 
-		new Thread(() -> {
-			try {
-				if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-					if (burp.BurpExtender.api != null) {
-						try {
-							burp.BurpExtender.api.logging().logToError("Polling task did not terminate in time.");
-						} catch (Exception ignore) {
-						}
+		new Thread(this::awaitTermination).start();
+	}
+
+	public void closeAndWait() {
+		stopped = true;
+		pollSignal.release();
+		executor.shutdownNow();
+		awaitTermination();
+	}
+
+	private void awaitTermination() {
+		try {
+			if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+				if (burp.BurpExtender.api != null) {
+					try {
+						burp.BurpExtender.api.logging().logToError("Polling task did not terminate in time.");
+					} catch (Exception ignore) {
 					}
 				}
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
 			}
-		}).start();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public boolean pollNowAll() {
