@@ -49,14 +49,24 @@ public class InteractshListener {
 					SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
-					if (!client.poll() && client.isSessionLost() && !stopped) {
-						if (client.register() && burp.BurpExtender.api != null) {
-							burp.BurpExtender.api.logging()
-									.logToOutput("Session was lost on the server and has been re-registered.");
+					long pollTime = 60;
+					try {
+						if (!client.poll() && client.isSessionLost() && !stopped) {
+							if (client.register() && burp.BurpExtender.api != null) {
+								burp.BurpExtender.api.logging()
+										.logToOutput("Session was lost on the server and has been re-registered.");
+							}
+						}
+						pollTime = burp.BurpExtender.getPollTime();
+					} catch (RuntimeException ex) {
+						if (stopped || burp.BurpExtender.unloading) {
+							break;
+						}
+						if (burp.BurpExtender.api != null) {
+							burp.BurpExtender.api.logging().logToError("Polling error: " + ex);
 						}
 					}
 					try {
-						long pollTime = burp.BurpExtender.getPollTime();
 						pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS);
 					} catch (InterruptedException e) {
 						break;
@@ -72,7 +82,9 @@ public class InteractshListener {
 				}
 			}
 		} catch (Throwable ex) {
-			String errorMsg = "Error during registration: " + ex;
+			String errorMsg = (client != null && client.isRegistered())
+					? "Polling stopped unexpectedly, regenerate the session: " + ex
+					: "Error during registration: " + ex;
 			if (burp.BurpExtender.api != null) {
 				burp.BurpExtender.api.logging().logToError(errorMsg);
 			}
