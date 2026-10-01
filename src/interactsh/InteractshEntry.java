@@ -47,6 +47,14 @@ public class InteractshEntry {
 		}
 	}
 
+	/**
+	 * Interactions without a unique ID are not tied to a session: the server
+	 * hands them to every client authenticated with its token.
+	 */
+	public boolean isShared() {
+		return uid == null || uid.isEmpty();
+	}
+
 	private String formatDetails(JSONObject obj) {
 		try {
 			return FormatterRegistry.get(protocol).format(obj);
