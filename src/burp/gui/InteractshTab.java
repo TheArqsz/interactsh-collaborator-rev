@@ -168,7 +168,16 @@ public class InteractshTab extends JComponent {
 
 		JPanel controlsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		JButton generateUrlButton = new JButton("Regenerate Interactsh Session");
-		JButton copyUrlButton = new JButton("Copy URL to clipboard");
+		// Paint the background ourselves so the look and feel's hover state cannot
+		// replace the custom colour.
+		JButton copyUrlButton = new JButton("Copy URL to clipboard") {
+			@Override
+			protected void paintComponent(java.awt.Graphics g) {
+				g.setColor(getBackground());
+				g.fillRect(0, 0, getWidth(), getHeight());
+				super.paintComponent(g);
+			}
+		};
 		JButton refreshButton = new JButton("Refresh");
 		JButton clearLogButton = new JButton("Clear log");
 		JLabel pollLabel = new JLabel("Poll Time: ");
@@ -182,7 +191,8 @@ public class InteractshTab extends JComponent {
 		Color copyButtonHoverColor = new Color(190, 82, 35);
 		copyUrlButton.setBackground(copyButtonColor);
 		copyUrlButton.setForeground(Color.WHITE);
-		copyUrlButton.setOpaque(true);
+		copyUrlButton.setContentAreaFilled(false);
+		copyUrlButton.setOpaque(false);
 		copyUrlButton.setFont(copyUrlButton.getFont().deriveFont(Font.BOLD));
 		copyUrlButton.setBorderPainted(false);
 		copyUrlButton.addMouseListener(new java.awt.event.MouseAdapter() {
