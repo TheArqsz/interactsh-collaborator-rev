@@ -83,6 +83,7 @@ public class InteractshTab extends JComponent {
 	private static JComboBox<String> aesModeBox;
 	private static JCheckBox debugLoggingBox;
 	private static JCheckBox hideSharedBox;
+	private static JCheckBox hideWildcardBox;
 	private static JTextField cidLengthText;
 	private static JTextField cidNonceLengthText;
 
@@ -299,7 +300,7 @@ public class InteractshTab extends JComponent {
 		mainPane.addTab("Configuration", configPanel);
 		configPanel.add(subConfigPanel);
 		JPanel innerConfig = new JPanel();
-		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 340));
+		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 370));
 		innerConfig.setLayout(new SpringLayout());
 		subConfigPanel.add(innerConfig);
 
@@ -318,6 +319,10 @@ public class InteractshTab extends JComponent {
 		hideSharedBox.setToolTipText("Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
 				+ "LDAP full logging). Token-authenticated servers send these to every client.");
 
+		hideWildcardBox = new JCheckBox("", false);
+		hideWildcardBox.setSelected(Config.isHideWildcard());
+		hideWildcardBox.setToolTipText("Hide interactions with the server's root domain that do not belong to this "
+				+ "session. Servers started with -wildcard send these to every client.");
 		cidLengthText = new JTextField(String.valueOf(Config.getCidLength()), 20);
 		cidLengthText.setToolTipText("Must match the server's -cidl value (default 20).");
 		cidNonceLengthText = new JTextField(String.valueOf(Config.getCidNonceLength()), 20);
@@ -339,6 +344,8 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(debugLoggingBox);
 		innerConfig.add(new JLabel("Hide shared interactions: ", SwingConstants.TRAILING));
 		innerConfig.add(hideSharedBox);
+		innerConfig.add(new JLabel("Hide wildcard interactions: ", SwingConstants.TRAILING));
+		innerConfig.add(hideWildcardBox);
 		innerConfig.add(new JLabel("Correlation ID length: ", SwingConstants.TRAILING));
 		innerConfig.add(cidLengthText);
 		innerConfig.add(new JLabel("Correlation ID nonce length: ", SwingConstants.TRAILING));
@@ -388,7 +395,7 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(updateConfigButton);
 		innerConfig.add(new JPanel());
 
-		SpringUtilities.makeCompactGrid(innerConfig, 11, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 12, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -482,6 +489,14 @@ public class InteractshTab extends JComponent {
 		cidNonceLengthText.setText(text);
 	}
 
+	public static String getHideWildcard() {
+		return Boolean.toString(hideWildcardBox.isSelected());
+	}
+
+	public static void setHideWildcard(boolean value) {
+		hideWildcardBox.setSelected(value);
+	}
+
 	public static String getHideShared() {
 		return Boolean.toString(hideSharedBox.isSelected());
 	}
@@ -492,12 +507,13 @@ public class InteractshTab extends JComponent {
 
 	private void applyRowFilter() {
 		boolean hideShared = Config.isHideShared();
+		boolean hideWildcard = Config.isHideWildcard();
 		String protocol = selectedProtocol.toLowerCase();
 		sorter.setRowFilter(new RowFilter<TableModel, Integer>() {
 			@Override
 			public boolean include(Entry<? extends TableModel, ? extends Integer> entry) {
 				InteractshEntry ie = log.get(entry.getIdentifier());
-				if (hideShared && ie.isShared()) {
+				if ((hideShared && ie.isShared()) || (hideWildcard && ie.wildcard)) {
 					return false;
 				}
 				return "all".equals(protocol) || ie.protocol.toLowerCase().contains(protocol);
@@ -547,8 +563,9 @@ public class InteractshTab extends JComponent {
 			int tabIndex = tabbedPane.indexOfComponent(this);
 			if (tabIndex != -1) {
 				boolean hideShared = Config.isHideShared();
-				long unreadCount = log.stream()
-						.filter(e -> !e.isRead() && !(hideShared && e.isShared())).count();
+				boolean hideWildcard = Config.isHideWildcard();
+				long unreadCount = log.stream().filter(e -> !e.isRead() && !(hideShared && e.isShared())
+						&& !(hideWildcard && e.wildcard)).count();
 				String newTitle = "Interactsh";
 				if (unreadCount > 0) {
 					newTitle += " (" + unreadCount + ")";
@@ -713,6 +730,9 @@ public class InteractshTab extends JComponent {
 				case ID:
 					return rowIndex + 1;
 				case ENTRY:
+					if (ie.wildcard) {
+						return ie.uid + " (wildcard)";
+					}
 					return ie.isShared() ? "(shared)" : ie.uid;
 				case TYPE:
 					return ie.protocol;

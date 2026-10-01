@@ -270,19 +270,8 @@ public class InteractshClient {
 			}
 			// Token-scoped interactions (FTP, SMB, Responder, LDAP full logging) are
 			// returned unencrypted in a separate field.
-			if (!jsonObject.isNull("extra")) {
-				JSONArray extra = jsonObject.getJSONArray("extra");
-				for (int i = 0; i < extra.length(); i++) {
-					if (!isExtensionActive())
-						break;
-					try {
-						burp.BurpExtender.addToTable(new InteractshEntry(extra.getString(i)));
-					} catch (Exception ex) {
-						burp.BurpExtender.api.logging()
-								.logToError("Could not parse extra interaction: " + ex.getMessage());
-					}
-				}
-			}
+			addPlainInteractions(jsonObject, "extra", false);
+			addPlainInteractions(jsonObject, "tlddata", true);
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
 				String msg = isUnknownHost(ex)
@@ -357,6 +346,28 @@ public class InteractshClient {
 
 			fullDomain += "." + host;
 			return fullDomain;
+		}
+	}
+
+	private void addPlainInteractions(JSONObject pollResponse, String field, boolean wildcard) {
+		if (pollResponse.isNull(field)) {
+			return;
+		}
+		JSONArray interactions = pollResponse.getJSONArray(field);
+		for (int i = 0; i < interactions.length(); i++) {
+			if (!isExtensionActive())
+				break;
+			try {
+				InteractshEntry entry = new InteractshEntry(interactions.getString(i));
+				if (wildcard && entry.uid.toLowerCase().contains(correlationId)) {
+					continue;
+				}
+				entry.wildcard = wildcard;
+				burp.BurpExtender.addToTable(entry);
+			} catch (Exception ex) {
+				burp.BurpExtender.api.logging()
+						.logToError("Could not parse " + field + " interaction: " + ex.getMessage());
+			}
 		}
 	}
 
