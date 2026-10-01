@@ -50,6 +50,8 @@ public class InteractshClient {
 	private volatile boolean registered;
 	@Getter
 	private volatile boolean sessionLost;
+	@Getter
+	private volatile String lastError;
 	private String authorization;
 	private String aesMode;
 
@@ -74,16 +76,13 @@ public class InteractshClient {
 	}
 
 	public boolean register() {
+		this.lastError = null;
 		if (!isExtensionActive())
 			return false;
 
-		try {
-			java.net.InetAddress.getByName(host);
-		} catch (java.net.UnknownHostException e) {
-			if (isExtensionActive()) {
-				burp.BurpExtender.api.logging().logToError(
-						"Cannot resolve host '" + host + "' - please check the server address in Configuration.");
-			}
+		if (!hostResolves()) {
+			this.lastError = "Cannot resolve host '" + host + "' - please check the server address in Configuration.";
+			burp.BurpExtender.api.logging().logToError(lastError);
 			return false;
 		}
 
@@ -118,9 +117,10 @@ public class InteractshClient {
 					.debugLog("Registration response received: " + (resp != null ? resp.statusCode() : "null"));
 
 			if (resp == null) {
+				this.lastError = "No response from '" + host + ":" + port
+						+ "' - check the port, TLS setting and that the server is running.";
 				if (isExtensionActive()) {
-					burp.BurpExtender.api.logging().logToError(
-							"Registration failed: No response received from server. Check your connection/host settings.");
+					burp.BurpExtender.api.logging().logToError("Registration failed: " + lastError);
 				}
 				return false;
 			}
@@ -137,14 +137,32 @@ public class InteractshClient {
 				}
 			}
 		} catch (Exception ex) {
+			this.lastError = isUnknownHost(ex)
+					? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
+					: "Registration error: " + ex.getMessage();
 			if (isExtensionActive()) {
-				String msg = (ex instanceof java.net.UnknownHostException)
-						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
-						: "Registration error: " + ex.getMessage();
-				burp.BurpExtender.api.logging().logToError(msg);
+				burp.BurpExtender.api.logging().logToError(lastError);
 			}
 		}
 		return false;
+	}
+
+	private static boolean isUnknownHost(Throwable ex) {
+		for (Throwable t = ex; t != null; t = t.getCause()) {
+			if (t instanceof java.net.UnknownHostException) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hostResolves() {
+		try {
+			java.net.InetAddress.getByName(host);
+			return true;
+		} catch (java.net.UnknownHostException e) {
+			return false;
+		}
 	}
 
 	public boolean poll() {
@@ -172,7 +190,9 @@ public class InteractshClient {
 			resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
-				burp.BurpExtender.api.logging().logToError("Poll failed - request error: " + ex.getMessage());
+				burp.BurpExtender.api.logging().logToError(isUnknownHost(ex)
+						? "Poll failed - cannot resolve host '" + host + "'."
+						: "Poll failed - request error: " + ex.getMessage());
 			}
 			return false;
 		}
@@ -223,7 +243,7 @@ public class InteractshClient {
 			}
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
-				String msg = (ex instanceof java.net.UnknownHostException)
+				String msg = isUnknownHost(ex)
 						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Polling error: " + ex.getMessage();
 				burp.BurpExtender.api.logging().logToError(msg);
@@ -273,7 +293,7 @@ public class InteractshClient {
 		} catch (Exception ex) {
 			this.registered = false;
 			try {
-				String msg = (ex instanceof java.net.UnknownHostException)
+				String msg = isUnknownHost(ex)
 						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 						: "Deregister error: " + ex.getMessage();
 				api.logging().logToError(msg);
