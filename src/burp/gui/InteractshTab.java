@@ -83,6 +83,8 @@ public class InteractshTab extends JComponent {
 	private static JComboBox<String> aesModeBox;
 	private static JCheckBox debugLoggingBox;
 	private static JCheckBox hideSharedBox;
+	private static JTextField cidLengthText;
+	private static JTextField cidNonceLengthText;
 
 	private TableRowSorter<TableModel> sorter;
 	private String selectedProtocol = "All";
@@ -223,7 +225,8 @@ public class InteractshTab extends JComponent {
 						}
 						try {
 							java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
-							if (sel != null) sel.setContents(stringSelection, null);
+							if (sel != null)
+								sel.setContents(stringSelection, null);
 						} catch (Exception ex) {
 						}
 						ToastNotification.showToast("✓ Regenerated and copied new Interact.sh URL.",
@@ -291,7 +294,7 @@ public class InteractshTab extends JComponent {
 		mainPane.addTab("Configuration", configPanel);
 		configPanel.add(subConfigPanel);
 		JPanel innerConfig = new JPanel();
-		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 280));
+		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 340));
 		innerConfig.setLayout(new SpringLayout());
 		subConfigPanel.add(innerConfig);
 
@@ -310,6 +313,11 @@ public class InteractshTab extends JComponent {
 		hideSharedBox.setToolTipText("Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
 				+ "LDAP full logging). Token-authenticated servers send these to every client.");
 
+		cidLengthText = new JTextField(String.valueOf(Config.getCidLength()), 20);
+		cidLengthText.setToolTipText("Must match the server's -cidl value (default 20).");
+		cidNonceLengthText = new JTextField(String.valueOf(Config.getCidNonceLength()), 20);
+		cidNonceLengthText.setToolTipText("Must match the server's -cidn value (default 13).");
+
 		innerConfig.add(new JLabel("Server: ", SwingConstants.TRAILING));
 		innerConfig.add(serverText);
 		innerConfig.add(new JLabel("Port: ", SwingConstants.TRAILING));
@@ -326,6 +334,10 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(debugLoggingBox);
 		innerConfig.add(new JLabel("Hide shared interactions: ", SwingConstants.TRAILING));
 		innerConfig.add(hideSharedBox);
+		innerConfig.add(new JLabel("Correlation ID length: ", SwingConstants.TRAILING));
+		innerConfig.add(cidLengthText);
+		innerConfig.add(new JLabel("Correlation ID nonce length: ", SwingConstants.TRAILING));
+		innerConfig.add(cidNonceLengthText);
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -333,6 +345,8 @@ public class InteractshTab extends JComponent {
 			String oldPort = burp.gui.Config.getPort();
 			String oldAuth = burp.gui.Config.getAuth();
 			Boolean oldTls = burp.gui.Config.getScheme();
+			int oldCidLength = burp.gui.Config.getCidLength();
+			int oldCidNonceLength = burp.gui.Config.getCidNonceLength();
 
 			String newServer = serverText.getText();
 			String newPort = portText.getText();
@@ -340,12 +354,15 @@ public class InteractshTab extends JComponent {
 			Boolean newTls = tlsBox.isSelected();
 
 			burp.gui.Config.updateConfig();
+			cidLengthText.setText(String.valueOf(Config.getCidLength()));
+			cidNonceLengthText.setText(String.valueOf(Config.getCidNonceLength()));
 			pollField.setText(pollText.getText());
 			applyRowFilter();
 			updateUnreadCount();
 
 			boolean criticalSettingChanged = !oldServer.equals(newServer)
-					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls;
+					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls
+					|| oldCidLength != Config.getCidLength() || oldCidNonceLength != Config.getCidNonceLength();
 
 			if (criticalSettingChanged) {
 				burp.BurpExtender.debugLog("Server configuration changed. Creating new Interact.sh session.");
@@ -361,7 +378,7 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(updateConfigButton);
 		innerConfig.add(new JPanel());
 
-		SpringUtilities.makeCompactGrid(innerConfig, 9, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 11, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -439,6 +456,22 @@ public class InteractshTab extends JComponent {
 		debugLoggingBox.setSelected(value);
 	}
 
+	public static String getCidLengthText() {
+		return cidLengthText.getText();
+	}
+
+	public static void setCidLengthText(String text) {
+		cidLengthText.setText(text);
+	}
+
+	public static String getCidNonceLengthText() {
+		return cidNonceLengthText.getText();
+	}
+
+	public static void setCidNonceLengthText(String text) {
+		cidNonceLengthText.setText(text);
+	}
+
 	public static String getHideShared() {
 		return Boolean.toString(hideSharedBox.isSelected());
 	}
@@ -486,7 +519,8 @@ public class InteractshTab extends JComponent {
 					}
 					try {
 						java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
-						if (sel != null) sel.setContents(stringSelection, null);
+						if (sel != null)
+							sel.setContents(stringSelection, null);
 					} catch (Exception ex) {
 					}
 					api.logging().logToOutput(

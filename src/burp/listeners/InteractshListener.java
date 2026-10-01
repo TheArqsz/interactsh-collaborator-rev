@@ -36,8 +36,22 @@ public class InteractshListener {
 				if (burp.BurpExtender.api != null) {
 					burp.BurpExtender.api.logging().logToOutput("Session URL: " + newUrl);
 				}
-				if (onReadyCallback != null) {
-					SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
+				if (client.verifyCallback()) {
+					if (burp.BurpExtender.api != null) {
+						burp.BurpExtender.api.logging().logToOutput("Session verified: server recorded a test callback.");
+					}
+					if (onReadyCallback != null) {
+						SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
+					}
+				} else if (!stopped && !burp.BurpExtender.unloading) {
+					String errorMsg = "Session registered, but the server did not record a test callback. "
+							+ "Check that the correlation ID lengths match the server's -cidl/-cidn.";
+					if (burp.BurpExtender.api != null) {
+						burp.BurpExtender.api.logging().logToError(errorMsg);
+					}
+					if (onFailureCallback != null) {
+						SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
+					}
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
 					long pollTime = 60;
