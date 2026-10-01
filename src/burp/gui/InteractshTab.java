@@ -57,6 +57,7 @@ import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
 import burp.gui.ToastNotification.MessageType;
 import burp.listeners.InteractshListener;
+import interactsh.InteractshClient;
 import interactsh.InteractshEntry;
 import layout.SpringUtilities;
 import lombok.Getter;
@@ -397,8 +398,55 @@ public class InteractshTab extends JComponent {
 				ToastNotification.showToast("Settings saved.", MessageType.SUCCESS);
 			}
 		});
+		JButton testConfigButton = new JButton("Test Settings");
+		testConfigButton.setToolTipText("Try the values above against the server without saving them: registers a "
+				+ "temporary session, checks that a test callback is recorded, then removes it.");
+		testConfigButton.addActionListener(e -> {
+			String host = serverText.getText().trim();
+			boolean tls = tlsBox.isSelected();
+			String enteredPort = portText.getText();
+			String port = Config.validPort(enteredPort, tls);
+			if (!port.equals(enteredPort.trim())) {
+				ToastNotification.showToast("❌ Invalid port '" + enteredPort + "'.", MessageType.ERROR);
+				return;
+			}
+			InteractshClient testClient = InteractshClient.forTest(host, Integer.parseInt(port), tls,
+					authText.getText(), Config.validCidLength(cidLengthText.getText()),
+					Config.validCidNonceLength(cidNonceLengthText.getText()), (String) aesModeBox.getSelectedItem());
+			testConfigButton.setEnabled(false);
+			ToastNotification.showToast("Testing settings...", MessageType.INFO);
+			new Thread(() -> {
+				String error = null;
+				try {
+					if (!testClient.register()) {
+						error = (testClient.getLastError() != null) ? testClient.getLastError()
+								: "Registration failed. See the extension's error log.";
+					} else if (!testClient.verifyCallback()) {
+						error = "Registered, but the server did not record a test callback. "
+								+ "Check the correlation ID lengths and AES mode.";
+					}
+				} catch (RuntimeException ex) {
+					error = "Test failed: " + ex.getMessage();
+				} finally {
+					if (testClient.isRegistered()) {
+						testClient.deregister();
+					}
+				}
+				String result = error;
+				SwingUtilities.invokeLater(() -> {
+					testConfigButton.setEnabled(true);
+					if (result == null) {
+						ToastNotification.showToast("✓ Settings work. Nothing was saved.", MessageType.SUCCESS);
+					} else {
+						ToastNotification.showToast("❌ " + result, MessageType.ERROR);
+					}
+				});
+			}).start();
+		});
+		JPanel testButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		testButtonPanel.add(testConfigButton);
 		innerConfig.add(updateConfigButton);
-		innerConfig.add(new JPanel());
+		innerConfig.add(testButtonPanel);
 
 		SpringUtilities.makeCompactGrid(innerConfig, 17, 2, // rows, cols
 				6, 6, // initX, initY

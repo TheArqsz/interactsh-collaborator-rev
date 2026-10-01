@@ -131,16 +131,24 @@ public class Config {
 	// The id is cut from a 32 character UUID; the server requires at least 3 for
 	// both parts.
 	public static int getCidLength() {
-		return getLength("interactsh-cid-length", DEFAULT_CID_LENGTH, 32);
+		return validCidLength(getString("interactsh-cid-length", ""));
 	}
 
 	public static int getCidNonceLength() {
-		return getLength("interactsh-cid-nonce-length", DEFAULT_CID_NONCE_LENGTH, 31);
+		return validCidNonceLength(getString("interactsh-cid-nonce-length", ""));
 	}
 
-	private static int getLength(String key, int defaultValue, int max) {
+	public static int validCidLength(String text) {
+		return validLength(text, DEFAULT_CID_LENGTH, 32);
+	}
+
+	public static int validCidNonceLength(String text) {
+		return validLength(text, DEFAULT_CID_NONCE_LENGTH, 31);
+	}
+
+	private static int validLength(String text, int defaultValue, int max) {
 		try {
-			int value = Integer.parseInt(getString(key, String.valueOf(defaultValue)).trim());
+			int value = Integer.parseInt(text.trim());
 			return (value >= 3 && value <= max) ? value : defaultValue;
 		} catch (NumberFormatException e) {
 			return defaultValue;
