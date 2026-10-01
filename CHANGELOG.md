@@ -1,3 +1,29 @@
+## [1.6.0](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.5.0...v1.6.0) (2026-10-01)
+
+
+### Features
+
+* **config:** support custom correlation id lengths and verify session after registration ([e461f1b](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/e461f1b59c0fc597396f09730cf0d6806cce8494))
+* **core:** show wildcard interactions with an option to hide them ([41df176](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/41df1768e264d9b62ada05e25eafca46ea009e6f))
+* **ui:** add test settings button that verifies without saving ([d7ee7e6](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/d7ee7e6a2219af89743e018547216ea70eae9ad5))
+
+
+### Bug Fixes
+
+* **config:** apply AES mode changes to the running session ([c0b32ab](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/c0b32ab0b1009892f24c7b6e8043f17a4f3eeb3d))
+* **config:** reset invalid port to the scheme default and report it ([bf84d2b](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/bf84d2bcd2406ee643f134ef94eeace8021f02f4))
+* **core:** check host once and report the registration failure reason ([dc55b43](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/dc55b4314a4fbcb7f175c1a20098492600026971))
+* **core:** coalesce repeated refresh requests ([3ff8664](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/3ff866419443aff493f71e5845ab5f1c6ba60856))
+* **core:** deregister session on regenerate, settings change and unload ([e27d76b](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/e27d76b1b466ae7fc0b9488c80f7d6375cf981f4))
+* **core:** drop late test callbacks for the whole session ([817c156](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/817c1562ea981e88d5d6bb369b106f9429f94337))
+* **core:** generate URL nonce from zbase32 alphabet ([a938cc8](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/a938cc8ffe5934ddaeba25d30191215c268e6627))
+* **core:** ignore registrations that finish after the listener was closed ([503ddcb](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/503ddcb933d7c0b142eb5cec29d4530ea7aa6929))
+* **core:** keep polling loop alive after a failed poll ([d9f2737](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/d9f27376562f32a3b657a8466670d19fa8a52acc))
+* **core:** re-register session when server no longer knows it ([f8ff737](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/f8ff73774ae9b79b904d7bab7ec82cab59e57f00))
+* **ui:** never render table cell text as HTML ([98f3e99](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/98f3e99e34975c6101ff35e9963e0a2b44d71381))
+* **ui:** report missing or rejected token on 401 during registration ([b70928a](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/b70928ac3717c3fa1ec16f19f4e5d68dc91095ad))
+* **ui:** show actual poll result in refresh toast ([31f921f](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/31f921f0bf1f51c3f23689e66cc27788d3760996))
+
 ## [1.5.0](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.4.0...v1.5.0) (2026-10-01)
 
 
