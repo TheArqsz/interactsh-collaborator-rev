@@ -186,6 +186,21 @@ public class InteractshClient {
 					}
 				}
 			}
+			// Token-scoped interactions (FTP, SMB, Responder, LDAP full logging) are
+			// returned unencrypted in a separate field.
+			if (!jsonObject.isNull("extra")) {
+				JSONArray extra = jsonObject.getJSONArray("extra");
+				for (int i = 0; i < extra.length(); i++) {
+					if (!isExtensionActive())
+						break;
+					try {
+						burp.BurpExtender.addToTable(new InteractshEntry(extra.getString(i)));
+					} catch (Exception ex) {
+						burp.BurpExtender.api.logging()
+								.logToError("Could not parse extra interaction: " + ex.getMessage());
+					}
+				}
+			}
 		} catch (Exception ex) {
 			if (isExtensionActive()) {
 				String msg = (ex instanceof java.net.UnknownHostException)
