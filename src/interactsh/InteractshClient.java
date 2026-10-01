@@ -27,6 +27,9 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import lombok.Getter;
 
 public class InteractshClient {
+	// zbase32: the only nonce characters interactsh-server >= 1.4.0 accepts.
+	private static final String NONCE_ALPHABET = "ybndrfg8ejkmcpqxot1uwisza345h769";
+
 	private PrivateKey privateKey;
 	private PublicKey publicKey;
 
@@ -105,9 +108,11 @@ public class InteractshClient {
 
 			HttpService httpService = HttpService.httpService(host, port, scheme);
 			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
-			burp.BurpExtender.debugLog("Sending registration request to " + host + ":" + port + " (TLS=" + scheme + ")");
+			burp.BurpExtender
+					.debugLog("Sending registration request to " + host + ":" + port + " (TLS=" + scheme + ")");
 			HttpResponse resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
-			burp.BurpExtender.debugLog("Registration response received: " + (resp != null ? resp.statusCode() : "null"));
+			burp.BurpExtender
+					.debugLog("Registration response received: " + (resp != null ? resp.statusCode() : "null"));
 
 			if (resp == null) {
 				if (isExtensionActive()) {
@@ -258,7 +263,7 @@ public class InteractshClient {
 
 			Random random = new Random();
 			while (fullDomain.length() < 33) {
-				fullDomain += (char) (random.nextInt(26) + 'a');
+				fullDomain += NONCE_ALPHABET.charAt(random.nextInt(NONCE_ALPHABET.length()));
 			}
 
 			fullDomain += "." + host;
