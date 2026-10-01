@@ -82,6 +82,10 @@ public class InteractshTab extends JComponent {
 	private static JCheckBox tlsBox;
 	private static JComboBox<String> aesModeBox;
 	private static JCheckBox debugLoggingBox;
+	private static JCheckBox hideSharedBox;
+
+	private TableRowSorter<TableModel> sorter;
+	private String selectedProtocol = "All";
 
 	private final List<InteractshEntry> log = new ArrayList<>();
 	private InteractshListener listener;
@@ -127,8 +131,9 @@ public class InteractshTab extends JComponent {
 		logTable = new Table(logTableModel);
 		tableSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 
-		TableRowSorter<TableModel> sorter = new TableRowSorter<>(logTableModel);
+		sorter = new TableRowSorter<>(logTableModel);
 		logTable.setRowSorter(sorter);
+		applyRowFilter();
 
 		List<RowSorter.SortKey> sortKeys = new ArrayList<>();
 		sortKeys.add(new RowSorter.SortKey(LogTable.Column.ID.ordinal(), SortOrder.DESCENDING));
@@ -259,18 +264,13 @@ public class InteractshTab extends JComponent {
 		filterLabel.setEnabled(false);
 		filterPanel.add(filterLabel);
 		ButtonGroup filterGroup = new ButtonGroup();
-		String[] protocols = { "All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "FTP" };
+		String[] protocols = { "All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "Responder", "FTP" };
 
 		for (String protocol : protocols) {
 			JToggleButton filterButton = new JToggleButton(protocol);
 			filterButton.addActionListener(e -> {
-				String selectedProtocol = filterButton.getText();
-				if ("All".equals(selectedProtocol)) {
-					sorter.setRowFilter(null);
-				} else {
-					sorter.setRowFilter(RowFilter.regexFilter("(?i)" + selectedProtocol,
-							LogTable.Column.TYPE.ordinal()));
-				}
+				selectedProtocol = filterButton.getText();
+				applyRowFilter();
 			});
 
 			filterGroup.add(filterButton);
@@ -291,7 +291,7 @@ public class InteractshTab extends JComponent {
 		mainPane.addTab("Configuration", configPanel);
 		configPanel.add(subConfigPanel);
 		JPanel innerConfig = new JPanel();
-		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 250));
+		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 280));
 		innerConfig.setLayout(new SpringLayout());
 		subConfigPanel.add(innerConfig);
 
@@ -305,6 +305,10 @@ public class InteractshTab extends JComponent {
 		aesModeBox.setSelectedItem(Config.getAesMode());
 		debugLoggingBox = new JCheckBox("", false);
 		debugLoggingBox.setSelected(Config.isDebugEnabled());
+		hideSharedBox = new JCheckBox("", true);
+		hideSharedBox.setSelected(Config.isHideShared());
+		hideSharedBox.setToolTipText("Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
+				+ "LDAP full logging). Token-authenticated servers send these to every client.");
 
 		innerConfig.add(new JLabel("Server: ", SwingConstants.TRAILING));
 		innerConfig.add(serverText);
@@ -320,6 +324,8 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(aesModeBox);
 		innerConfig.add(new JLabel("Debug Logging: ", SwingConstants.TRAILING));
 		innerConfig.add(debugLoggingBox);
+		innerConfig.add(new JLabel("Hide shared interactions: ", SwingConstants.TRAILING));
+		innerConfig.add(hideSharedBox);
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -335,6 +341,8 @@ public class InteractshTab extends JComponent {
 
 			burp.gui.Config.updateConfig();
 			pollField.setText(pollText.getText());
+			applyRowFilter();
+			updateUnreadCount();
 
 			boolean criticalSettingChanged = !oldServer.equals(newServer)
 					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls;
@@ -353,7 +361,7 @@ public class InteractshTab extends JComponent {
 		innerConfig.add(updateConfigButton);
 		innerConfig.add(new JPanel());
 
-		SpringUtilities.makeCompactGrid(innerConfig, 8, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 9, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -431,6 +439,29 @@ public class InteractshTab extends JComponent {
 		debugLoggingBox.setSelected(value);
 	}
 
+	public static String getHideShared() {
+		return Boolean.toString(hideSharedBox.isSelected());
+	}
+
+	public static void setHideShared(boolean value) {
+		hideSharedBox.setSelected(value);
+	}
+
+	private void applyRowFilter() {
+		boolean hideShared = Config.isHideShared();
+		String protocol = selectedProtocol.toLowerCase();
+		sorter.setRowFilter(new RowFilter<TableModel, Integer>() {
+			@Override
+			public boolean include(Entry<? extends TableModel, ? extends Integer> entry) {
+				InteractshEntry ie = log.get(entry.getIdentifier());
+				if (hideShared && ie.isShared()) {
+					return false;
+				}
+				return "all".equals(protocol) || ie.protocol.toLowerCase().contains(protocol);
+			}
+		});
+	}
+
 	private JEditorPane createClickableLink(String html) {
 		JEditorPane editorPane = new JEditorPane("text/html", html);
 		editorPane.setEditable(false);
@@ -471,7 +502,9 @@ public class InteractshTab extends JComponent {
 		if (parent instanceof JTabbedPane tabbedPane) {
 			int tabIndex = tabbedPane.indexOfComponent(this);
 			if (tabIndex != -1) {
-				long unreadCount = log.stream().filter(e -> !e.isRead()).count();
+				boolean hideShared = Config.isHideShared();
+				long unreadCount = log.stream()
+						.filter(e -> !e.isRead() && !(hideShared && e.isShared())).count();
 				String newTitle = "Interactsh";
 				if (unreadCount > 0) {
 					newTitle += " (" + unreadCount + ")";
@@ -636,7 +669,7 @@ public class InteractshTab extends JComponent {
 				case ID:
 					return rowIndex + 1;
 				case ENTRY:
-					return ie.uid;
+					return ie.isShared() ? "(shared)" : ie.uid;
 				case TYPE:
 					return ie.protocol;
 				case SOURCE_IP:

@@ -12,6 +12,7 @@ public class Config {
 	private static final String DEFAULT_USES_TLS = "true";
 	private static final String DEFAULT_AES_MODE = "AUTO";
 	private static final String DEFAULT_DEBUG_LOGGING = "false";
+	private static final String DEFAULT_HIDE_SHARED = "true";
 
 	private static Preferences preferences() {
 		return BurpExtender.api.persistence().preferences();
@@ -31,6 +32,7 @@ public class Config {
 			preferences().setString("interactsh-uses-tls", DEFAULT_USES_TLS);
 			preferences().setString("interactsh-aes-mode", DEFAULT_AES_MODE);
 			preferences().setString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
+			preferences().setString("interactsh-hide-shared", DEFAULT_HIDE_SHARED);
 		}
 	}
 
@@ -42,6 +44,7 @@ public class Config {
 		String pollInterval = getString("interactsh-poll-time", DEFAULT_POLL_INTERVAL);
 		String aesMode = getString("interactsh-aes-mode", DEFAULT_AES_MODE);
 		String debugLogging = getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
+		String hideShared = getString("interactsh-hide-shared", DEFAULT_HIDE_SHARED);
 
 		InteractshTab.setServerText(server);
 		InteractshTab.setPortText(port);
@@ -50,6 +53,7 @@ public class Config {
 		InteractshTab.setTlsBox(Boolean.parseBoolean(tls));
 		InteractshTab.setAesModeText(aesMode);
 		InteractshTab.setDebugLogging(Boolean.parseBoolean(debugLogging));
+		InteractshTab.setHideShared(Boolean.parseBoolean(hideShared));
 	}
 
 	public static void updateConfig() {
@@ -60,6 +64,7 @@ public class Config {
 		String tls = InteractshTab.getTlsBox();
 		String aesMode = InteractshTab.getAesModeText();
 		String debugLogging = InteractshTab.getDebugLogging();
+		String hideShared = InteractshTab.getHideShared();
 
 		preferences().setString("interactsh-server", server);
 		preferences().setString("interactsh-port", port);
@@ -68,6 +73,7 @@ public class Config {
 		preferences().setString("interactsh-authorization", authorization);
 		preferences().setString("interactsh-aes-mode", aesMode);
 		preferences().setString("interactsh-debug-logging", debugLogging);
+		preferences().setString("interactsh-hide-shared", hideShared);
 	}
 
 	public static String getHost() {
@@ -96,5 +102,9 @@ public class Config {
 
 	public static boolean isDebugEnabled() {
 		return Boolean.parseBoolean(getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING));
+	}
+
+	public static boolean isHideShared() {
+		return Boolean.parseBoolean(getString("interactsh-hide-shared", DEFAULT_HIDE_SHARED));
 	}
 }
