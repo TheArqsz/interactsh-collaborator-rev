@@ -56,7 +56,6 @@ public class InteractshClient {
 	@Getter
 	private volatile String lastError;
 	private String authorization;
-	private String aesMode;
 
 	public InteractshClient() {
 		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, burp.gui.Config.getCidLength());
@@ -71,7 +70,6 @@ public class InteractshClient {
 		this.host = burp.gui.Config.getHost();
 		this.scheme = burp.gui.Config.getScheme();
 		this.authorization = burp.gui.Config.getAuth();
-		this.aesMode = burp.gui.Config.getAesMode();
 		String configuredPort = burp.gui.Config.getPort();
 		String validPort = burp.gui.Config.validPort(configuredPort, this.scheme);
 		if (!validPort.equals(configuredPort.trim())) {
@@ -402,7 +400,8 @@ public class InteractshClient {
 	}
 
 	private String decryptData(String input, byte[] key) throws Exception {
-		String mode = (this.aesMode == null || this.aesMode.isEmpty()) ? "AUTO" : this.aesMode.toUpperCase();
+		String configured = burp.gui.Config.getAesMode();
+		String mode = (configured == null || configured.isEmpty()) ? "AUTO" : configured.toUpperCase();
 
 		if (!"AUTO".equals(mode)) {
 			return decryptDataWithMode(input, key, mode);
