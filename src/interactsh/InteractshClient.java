@@ -182,6 +182,7 @@ public class InteractshClient {
 		String probeHost = getInteractDomain();
 		this.probeSeen = false;
 		this.probeLabel = probeHost.substring(0, probeHost.indexOf('.'));
+		burp.BurpExtender.debugLog("Verifying session with a test callback to " + probeHost);
 		try {
 			String request = "GET / HTTP/1.1\r\nHost: " + probeHost
 					+ "\r\nUser-Agent: Interact.sh Client\r\nConnection: close\r\n\r\n";
@@ -197,8 +198,6 @@ public class InteractshClient {
 			Thread.currentThread().interrupt();
 		} catch (Exception ex) {
 			burp.BurpExtender.debugLog("Session verification request failed: " + ex.getMessage());
-		} finally {
-			this.probeLabel = null;
 		}
 		return probeSeen;
 	}
