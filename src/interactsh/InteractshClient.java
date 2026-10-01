@@ -165,9 +165,17 @@ public class InteractshClient {
 
 		String request = requestBuilder.toString();
 
-		HttpService httpService = HttpService.httpService(host, port, scheme);
-		HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
-		HttpResponse resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
+		HttpResponse resp;
+		try {
+			HttpService httpService = HttpService.httpService(host, port, scheme);
+			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
+			resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
+		} catch (Exception ex) {
+			if (isExtensionActive()) {
+				burp.BurpExtender.api.logging().logToError("Poll failed - request error: " + ex.getMessage());
+			}
+			return false;
+		}
 		if (resp == null || resp.statusCode() != 200) {
 			String body = (resp != null) ? resp.bodyToString() : null;
 			this.sessionLost = body != null && body.contains(SESSION_NOT_FOUND);
