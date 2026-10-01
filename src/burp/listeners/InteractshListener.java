@@ -49,7 +49,12 @@ public class InteractshListener {
 					SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
-					client.poll();
+					if (!client.poll() && client.isSessionLost() && !stopped) {
+						if (client.register() && burp.BurpExtender.api != null) {
+							burp.BurpExtender.api.logging()
+									.logToOutput("Session was lost on the server and has been re-registered.");
+						}
+					}
 					try {
 						long pollTime = burp.BurpExtender.getPollTime();
 						pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS);
