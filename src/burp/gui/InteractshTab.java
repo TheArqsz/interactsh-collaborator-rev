@@ -683,6 +683,6 @@ public class InteractshTab extends JComponent {
 	}
 
 	public void cleanup() {
-		listener.close();
+		listener.closeAndWait();
 	}
 }
