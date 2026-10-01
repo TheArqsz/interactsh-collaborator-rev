@@ -72,11 +72,13 @@ public class InteractshClient {
 		this.scheme = burp.gui.Config.getScheme();
 		this.authorization = burp.gui.Config.getAuth();
 		this.aesMode = burp.gui.Config.getAesMode();
-		try {
-			this.port = Integer.parseInt(burp.gui.Config.getPort());
-		} catch (NumberFormatException ne) {
-			this.port = 443;
+		String configuredPort = burp.gui.Config.getPort();
+		String validPort = burp.gui.Config.validPort(configuredPort, this.scheme);
+		if (!validPort.equals(configuredPort.trim())) {
+			burp.BurpExtender.api.logging().logToError(
+					"Invalid port '" + configuredPort + "' in Configuration - using " + validPort + " instead.");
 		}
+		this.port = Integer.parseInt(validPort);
 	}
 
 	public boolean register() {

@@ -93,6 +93,17 @@ public class Config {
 		return getString("interactsh-port", DEFAULT_PORT);
 	}
 
+	public static String validPort(String port, boolean tls) {
+		try {
+			int value = Integer.parseInt(port.trim());
+			if (value >= 1 && value <= 65535) {
+				return String.valueOf(value);
+			}
+		} catch (NumberFormatException e) {
+		}
+		return tls ? "443" : "80";
+	}
+
 	public static boolean getScheme() {
 		return Boolean.parseBoolean(getString("interactsh-uses-tls", DEFAULT_USES_TLS));
 	}
@@ -113,7 +124,8 @@ public class Config {
 		return Boolean.parseBoolean(getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING));
 	}
 
-	// The id is cut from a 32 character UUID; the server requires at least 3 for both parts.
+	// The id is cut from a 32 character UUID; the server requires at least 3 for
+	// both parts.
 	public static int getCidLength() {
 		return getLength("interactsh-cid-length", DEFAULT_CID_LENGTH, 32);
 	}
