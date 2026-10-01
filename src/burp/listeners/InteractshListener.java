@@ -27,6 +27,11 @@ public class InteractshListener {
 			this.client = new InteractshClient();
 			if (client.register()) {
 				Thread.interrupted();
+				if (stopped) {
+					burp.BurpExtender.debugLog("Discarding session " + client.getCorrelationId()
+							+ ": listener was closed during registration.");
+					return;
+				}
 				String newUrl = client.getInteractDomain();
 				if (burp.BurpExtender.api != null) {
 					burp.BurpExtender.api.logging().logToOutput("Session URL: " + newUrl);
@@ -58,7 +63,7 @@ public class InteractshListener {
 						break;
 					}
 				}
-			} else {
+			} else if (!stopped) {
 				String reason = client.getLastError();
 				String errorMsg = (reason != null) ? reason : "Unable to register interactsh client. Check config.";
 				if (reason == null && burp.BurpExtender.api != null) {
