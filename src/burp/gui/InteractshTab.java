@@ -719,6 +719,7 @@ public class InteractshTab extends JComponent {
 			Font originalFont = getFont();
 			this.plainFont = originalFont.deriveFont(Font.PLAIN);
 			this.boldFont = originalFont.deriveFont(Font.BOLD);
+			putClientProperty("html.disable", Boolean.TRUE);
 		}
 
 		@Override
