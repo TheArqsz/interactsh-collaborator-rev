@@ -349,7 +349,12 @@ public class InteractshTab extends JComponent {
 			int oldCidNonceLength = burp.gui.Config.getCidNonceLength();
 
 			String newServer = serverText.getText();
-			String newPort = portText.getText();
+			String enteredPort = portText.getText();
+			String newPort = Config.validPort(enteredPort, tlsBox.isSelected());
+			portText.setText(newPort);
+			if (!newPort.equals(enteredPort.trim())) {
+				api.logging().logToError("Invalid port '" + enteredPort + "' - reset to " + newPort + ".");
+			}
 			String newAuth = authText.getText();
 			Boolean newTls = tlsBox.isSelected();
 
