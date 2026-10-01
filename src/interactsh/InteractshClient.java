@@ -27,6 +27,7 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import lombok.Getter;
 
 public class InteractshClient {
+	private static final String SESSION_NOT_FOUND = "could not get correlation-id from cache";
 	// zbase32: the only nonce characters interactsh-server >= 1.4.0 accepts.
 	private static final String NONCE_ALPHABET = "ybndrfg8ejkmcpqxot1uwisza345h769";
 
@@ -47,6 +48,8 @@ public class InteractshClient {
 	private boolean scheme;
 	@Getter
 	private volatile boolean registered;
+	@Getter
+	private volatile boolean sessionLost;
 	private String authorization;
 	private String aesMode;
 
@@ -124,6 +127,7 @@ public class InteractshClient {
 
 			if (resp.statusCode() == 200) {
 				this.registered = true;
+				this.sessionLost = false;
 				burp.BurpExtender.debugLog("Session registration was successful.");
 				return true;
 			} else {
@@ -165,9 +169,12 @@ public class InteractshClient {
 		HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
 		HttpResponse resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		if (resp == null || resp.statusCode() != 200) {
+			String body = (resp != null) ? resp.bodyToString() : null;
+			this.sessionLost = body != null && body.contains(SESSION_NOT_FOUND);
 			if (isExtensionActive()) {
 				burp.BurpExtender.api.logging().logToError("Poll failed - status: "
-						+ (resp != null ? resp.statusCode() : "no response"));
+						+ (resp != null ? resp.statusCode() : "no response")
+						+ (sessionLost ? " (session unknown to server)" : ""));
 			}
 			return false;
 		}
@@ -218,7 +225,8 @@ public class InteractshClient {
 	}
 
 	public void deregister() {
-		// Runs during unload too, so it only needs the API handle, not an active extension.
+		// Runs during unload too, so it only needs the API handle, not an active
+		// extension.
 		burp.api.montoya.MontoyaApi api = burp.BurpExtender.api;
 		if (api == null)
 			return;
