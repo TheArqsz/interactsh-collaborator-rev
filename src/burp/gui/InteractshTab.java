@@ -243,10 +243,15 @@ public class InteractshTab extends JComponent {
 			}
 		});
 		refreshButton.addActionListener(e -> {
-			if (this.listener.pollNowAll()) {
-				ToastNotification.showToast("Session refreshed.", MessageType.INFO);
-			} else {
-				ToastNotification.showToast("❌ Failed to refresh session.", MessageType.ERROR);
+			boolean hasSession = this.listener.pollNowAll(polled -> {
+				if (polled) {
+					ToastNotification.showToast("Session refreshed.", MessageType.INFO);
+				} else {
+					ToastNotification.showToast("❌ Refresh failed. See the extension's error log.", MessageType.ERROR);
+				}
+			});
+			if (!hasSession) {
+				ToastNotification.showToast("❌ Failed to refresh. No active session.", MessageType.ERROR);
 			}
 		});
 		clearLogButton.addActionListener(e -> this.clearLog());
