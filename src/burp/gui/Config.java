@@ -13,6 +13,9 @@ public class Config {
 	private static final String DEFAULT_AES_MODE = "AUTO";
 	private static final String DEFAULT_DEBUG_LOGGING = "false";
 	private static final String DEFAULT_HIDE_SHARED = "true";
+	// Server defaults for -cidl and -cidn.
+	private static final int DEFAULT_CID_LENGTH = 20;
+	private static final int DEFAULT_CID_NONCE_LENGTH = 13;
 
 	private static Preferences preferences() {
 		return BurpExtender.api.persistence().preferences();
@@ -33,6 +36,8 @@ public class Config {
 			preferences().setString("interactsh-aes-mode", DEFAULT_AES_MODE);
 			preferences().setString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING);
 			preferences().setString("interactsh-hide-shared", DEFAULT_HIDE_SHARED);
+			preferences().setString("interactsh-cid-length", String.valueOf(DEFAULT_CID_LENGTH));
+			preferences().setString("interactsh-cid-nonce-length", String.valueOf(DEFAULT_CID_NONCE_LENGTH));
 		}
 	}
 
@@ -54,6 +59,8 @@ public class Config {
 		InteractshTab.setAesModeText(aesMode);
 		InteractshTab.setDebugLogging(Boolean.parseBoolean(debugLogging));
 		InteractshTab.setHideShared(Boolean.parseBoolean(hideShared));
+		InteractshTab.setCidLengthText(String.valueOf(getCidLength()));
+		InteractshTab.setCidNonceLengthText(String.valueOf(getCidNonceLength()));
 	}
 
 	public static void updateConfig() {
@@ -74,6 +81,8 @@ public class Config {
 		preferences().setString("interactsh-aes-mode", aesMode);
 		preferences().setString("interactsh-debug-logging", debugLogging);
 		preferences().setString("interactsh-hide-shared", hideShared);
+		preferences().setString("interactsh-cid-length", InteractshTab.getCidLengthText().trim());
+		preferences().setString("interactsh-cid-nonce-length", InteractshTab.getCidNonceLengthText().trim());
 	}
 
 	public static String getHost() {
@@ -102,6 +111,24 @@ public class Config {
 
 	public static boolean isDebugEnabled() {
 		return Boolean.parseBoolean(getString("interactsh-debug-logging", DEFAULT_DEBUG_LOGGING));
+	}
+
+	// The id is cut from a 32 character UUID; the server requires at least 3 for both parts.
+	public static int getCidLength() {
+		return getLength("interactsh-cid-length", DEFAULT_CID_LENGTH, 32);
+	}
+
+	public static int getCidNonceLength() {
+		return getLength("interactsh-cid-nonce-length", DEFAULT_CID_NONCE_LENGTH, 31);
+	}
+
+	private static int getLength(String key, int defaultValue, int max) {
+		try {
+			int value = Integer.parseInt(getString(key, String.valueOf(defaultValue)).trim());
+			return (value >= 3 && value <= max) ? value : defaultValue;
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
 	}
 
 	public static boolean isHideShared() {

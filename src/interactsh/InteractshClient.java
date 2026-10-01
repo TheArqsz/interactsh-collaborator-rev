@@ -41,6 +41,9 @@ public class InteractshClient {
 	@Getter
 	private final String correlationId;
 	private final String secretKey;
+	private final int nonceLength;
+	private volatile String probeLabel;
+	private volatile boolean probeSeen;
 	private final String pubKeyBase64;
 
 	private String host;
@@ -56,7 +59,8 @@ public class InteractshClient {
 	private String aesMode;
 
 	public InteractshClient() {
-		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, burp.gui.Config.getCidLength());
+		this.nonceLength = burp.gui.Config.getCidNonceLength();
 		this.secretKey = UUID.randomUUID().toString();
 
 		KeyPair kp = generateKeys();
@@ -165,6 +169,31 @@ public class InteractshClient {
 		}
 	}
 
+	public boolean verifyCallback() {
+		String probeHost = getInteractDomain();
+		this.probeSeen = false;
+		this.probeLabel = probeHost.substring(0, probeHost.indexOf('.'));
+		try {
+			String request = "GET / HTTP/1.1\r\nHost: " + probeHost
+					+ "\r\nUser-Agent: Interact.sh Client\r\nConnection: close\r\n\r\n";
+			burp.BurpExtender.api.http()
+					.sendRequest(HttpRequest.httpRequest(HttpService.httpService(host, port, scheme), request));
+			for (int attempt = 0; attempt < 3 && !probeSeen; attempt++) {
+				if (attempt > 0) {
+					Thread.sleep(500);
+				}
+				poll();
+			}
+		} catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+		} catch (Exception ex) {
+			burp.BurpExtender.debugLog("Session verification request failed: " + ex.getMessage());
+		} finally {
+			this.probeLabel = null;
+		}
+		return probeSeen;
+	}
+
 	public boolean poll() {
 		if (!isExtensionActive())
 			return false;
@@ -220,6 +249,10 @@ public class InteractshClient {
 				JSONArray data = jsonObject.getJSONArray("data");
 				for (int i = 0; i < data.length(); i++) {
 					String decryptedData = decryptData(data.getString(i), key);
+					if (probeLabel != null && decryptedData.contains(probeLabel)) {
+						probeSeen = true;
+						continue;
+					}
 					if (isExtensionActive()) {
 						InteractshEntry entry = new InteractshEntry(decryptedData);
 						burp.BurpExtender.addToTable(entry);
@@ -309,7 +342,7 @@ public class InteractshClient {
 			String fullDomain = correlationId;
 
 			Random random = new Random();
-			while (fullDomain.length() < 33) {
+			while (fullDomain.length() < correlationId.length() + nonceLength) {
 				fullDomain += NONCE_ALPHABET.charAt(random.nextInt(NONCE_ALPHABET.length()));
 			}
 
