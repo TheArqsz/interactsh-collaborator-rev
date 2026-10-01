@@ -42,6 +42,7 @@ public class InteractshClient {
 	private final String correlationId;
 	private final String secretKey;
 	private final int nonceLength;
+	private final String testAesMode;
 	private volatile String probeLabel;
 	private volatile boolean probeSeen;
 	private final String pubKeyBase64;
@@ -58,25 +59,41 @@ public class InteractshClient {
 	private String authorization;
 
 	public InteractshClient() {
-		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, burp.gui.Config.getCidLength());
-		this.nonceLength = burp.gui.Config.getCidNonceLength();
+		this(burp.gui.Config.getHost(), savedPort(), burp.gui.Config.getScheme(), burp.gui.Config.getAuth(),
+				burp.gui.Config.getCidLength(), burp.gui.Config.getCidNonceLength(), null);
+	}
+
+	public static InteractshClient forTest(String host, int port, boolean tls, String token, int cidLength,
+			int nonceLength, String aesMode) {
+		return new InteractshClient(host, port, tls, token, cidLength, nonceLength, aesMode);
+	}
+
+	private InteractshClient(String host, int port, boolean tls, String token, int cidLength, int nonceLength,
+			String testAesMode) {
+		this.correlationId = UUID.randomUUID().toString().replace("-", "").substring(0, cidLength);
+		this.nonceLength = nonceLength;
 		this.secretKey = UUID.randomUUID().toString();
+		this.testAesMode = testAesMode;
 
 		KeyPair kp = generateKeys();
 		this.publicKey = kp.getPublic();
 		this.privateKey = kp.getPrivate();
 		this.pubKeyBase64 = Base64.getEncoder().encodeToString(getPublicKey().getBytes(StandardCharsets.UTF_8));
 
-		this.host = burp.gui.Config.getHost();
-		this.scheme = burp.gui.Config.getScheme();
-		this.authorization = burp.gui.Config.getAuth();
+		this.host = host;
+		this.scheme = tls;
+		this.authorization = token;
+		this.port = port;
+	}
+
+	private static int savedPort() {
 		String configuredPort = burp.gui.Config.getPort();
-		String validPort = burp.gui.Config.validPort(configuredPort, this.scheme);
+		String validPort = burp.gui.Config.validPort(configuredPort, burp.gui.Config.getScheme());
 		if (!validPort.equals(configuredPort.trim())) {
 			burp.BurpExtender.api.logging().logToError(
 					"Invalid port '" + configuredPort + "' in Configuration - using " + validPort + " instead.");
 		}
-		this.port = Integer.parseInt(validPort);
+		return Integer.parseInt(validPort);
 	}
 
 	public boolean register() {
@@ -259,7 +276,7 @@ public class InteractshClient {
 						probeSeen = true;
 						continue;
 					}
-					if (isExtensionActive()) {
+					if (isExtensionActive() && testAesMode == null) {
 						InteractshEntry entry = new InteractshEntry(decryptedData);
 						burp.BurpExtender.addToTable(entry);
 					}
@@ -347,7 +364,7 @@ public class InteractshClient {
 	}
 
 	private void addPlainInteractions(JSONObject pollResponse, String field, boolean wildcard) {
-		if (pollResponse.isNull(field)) {
+		if (testAesMode != null || pollResponse.isNull(field)) {
 			return;
 		}
 		JSONArray interactions = pollResponse.getJSONArray(field);
@@ -400,7 +417,7 @@ public class InteractshClient {
 	}
 
 	private String decryptData(String input, byte[] key) throws Exception {
-		String configured = burp.gui.Config.getAesMode();
+		String configured = (testAesMode != null) ? testAesMode : burp.gui.Config.getAesMode();
 		String mode = (configured == null || configured.isEmpty()) ? "AUTO" : configured.toUpperCase();
 
 		if (!"AUTO".equals(mode)) {
