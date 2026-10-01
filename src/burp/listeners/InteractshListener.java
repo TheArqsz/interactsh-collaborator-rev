@@ -16,6 +16,7 @@ public class InteractshListener {
 	private volatile InteractshClient client;
 	private final Semaphore pollSignal = new Semaphore(0);
 	private volatile boolean stopped = false;
+	private static final long MIN_REFRESH_GAP_MS = 1000;
 
 	public InteractshListener(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
 		this.executor = Executors.newSingleThreadExecutor();
@@ -38,7 +39,8 @@ public class InteractshListener {
 				}
 				if (client.verifyCallback()) {
 					if (burp.BurpExtender.api != null) {
-						burp.BurpExtender.api.logging().logToOutput("Session verified: server recorded a test callback.");
+						burp.BurpExtender.api.logging()
+								.logToOutput("Session verified: server recorded a test callback.");
 					}
 					if (onReadyCallback != null) {
 						SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
@@ -55,6 +57,7 @@ public class InteractshListener {
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
 					long pollTime = 60;
+					long pollStarted = System.currentTimeMillis();
 					try {
 						if (!client.poll() && client.isSessionLost() && !stopped) {
 							if (client.register() && burp.BurpExtender.api != null) {
@@ -72,7 +75,13 @@ public class InteractshListener {
 						}
 					}
 					try {
-						pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS);
+						if (pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS)) {
+							long wait = MIN_REFRESH_GAP_MS - (System.currentTimeMillis() - pollStarted);
+							if (wait > 0 && !stopped) {
+								Thread.sleep(wait);
+							}
+							pollSignal.drainPermits();
+						}
 					} catch (InterruptedException e) {
 						break;
 					}
