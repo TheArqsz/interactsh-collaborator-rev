@@ -16,6 +16,7 @@ public class InteractshListener {
 	private volatile InteractshClient client;
 	private final Semaphore pollSignal = new Semaphore(0);
 	private volatile boolean stopped = false;
+	private volatile Consumer<Boolean> refreshCallback;
 	private static final long MIN_REFRESH_GAP_MS = 1000;
 
 	public InteractshListener(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
@@ -58,9 +59,14 @@ public class InteractshListener {
 				while (!stopped && !burp.BurpExtender.unloading) {
 					long pollTime = 60;
 					long pollStarted = System.currentTimeMillis();
+					Consumer<Boolean> onRefreshed = refreshCallback;
+					refreshCallback = null;
+					boolean polled = false;
 					try {
-						if (!client.poll() && client.isSessionLost() && !stopped) {
-							if (client.register() && burp.BurpExtender.api != null) {
+						polled = client.poll();
+						if (!polled && client.isSessionLost() && !stopped) {
+							polled = client.register();
+							if (polled && burp.BurpExtender.api != null) {
 								burp.BurpExtender.api.logging()
 										.logToOutput("Session was lost on the server and has been re-registered.");
 							}
@@ -73,6 +79,10 @@ public class InteractshListener {
 						if (burp.BurpExtender.api != null) {
 							burp.BurpExtender.api.logging().logToError("Polling error: " + ex);
 						}
+					}
+					if (onRefreshed != null && !stopped && !burp.BurpExtender.unloading) {
+						boolean result = polled;
+						SwingUtilities.invokeLater(() -> onRefreshed.accept(result));
 					}
 					try {
 						if (pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS)) {
@@ -145,12 +155,14 @@ public class InteractshListener {
 		}
 	}
 
-	public boolean pollNowAll() {
+	public boolean pollNowAll(Consumer<Boolean> onResult) {
 		InteractshClient currentClient = this.client;
-		if (currentClient != null && currentClient.isRegistered()) {
-			pollSignal.release();
+		if (currentClient == null || !currentClient.isRegistered()) {
+			return false;
 		}
-		return currentClient != null && currentClient.isRegistered();
+		refreshCallback = onResult;
+		pollSignal.release();
+		return true;
 	}
 
 	public boolean copyCurrentUrlToClipboard() {
