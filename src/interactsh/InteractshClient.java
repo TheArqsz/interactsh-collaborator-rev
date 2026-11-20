@@ -137,8 +137,10 @@ public class InteractshClient {
 		resetDecryptState();
 		if (!isExtensionActive())
 			return false;
+		burp.BurpExtender.debugLog("Registering session " + correlationId + " with " + host + ":" + port + " (TLS=" + scheme + ")");
 
 		if (!hostResolves()) {
+			burp.BurpExtender.debugLog("Registration aborted: host '" + host + "' does not resolve.");
 			this.lastError = "Cannot resolve host '" + host + "' - please check the server address in Configuration.";
 			burp.BurpExtender.api.logging().logToError(lastError);
 			return false;
