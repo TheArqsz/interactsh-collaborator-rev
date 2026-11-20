@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -355,7 +356,8 @@ public class InteractshTab extends JComponent {
 
 		addConfigHeading(innerConfig, "Diagnostics");
 		addConfigRow(innerConfig, "Debug Logging: ", debugLoggingBox,
-				"Write registration and session details to the extension's output log.");
+				"Log registration, polling and decryption details. Output goes to Extensions > this extension "
+						+ "> Output tab in Burp.");
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -365,6 +367,7 @@ public class InteractshTab extends JComponent {
 			Boolean oldTls = burp.gui.Config.getScheme();
 			int oldCidLength = burp.gui.Config.getCidLength();
 			int oldCidNonceLength = burp.gui.Config.getCidNonceLength();
+			String oldAesMode = burp.gui.Config.getAesMode();
 
 			String newServer = serverText.getText();
 			String enteredPort = portText.getText();
@@ -377,6 +380,10 @@ public class InteractshTab extends JComponent {
 			Boolean newTls = tlsBox.isSelected();
 
 			burp.gui.Config.updateConfig();
+			burp.BurpExtender.debugLog("Debug logging enabled");
+			if (!Objects.equals(oldAesMode, burp.gui.Config.getAesMode())) {
+				this.listener.resetDecryptNotice();
+			}
 			cidLengthText.setText(String.valueOf(Config.getCidLength()));
 			cidNonceLengthText.setText(String.valueOf(Config.getCidNonceLength()));
 			pollField.setText(pollText.getText());
