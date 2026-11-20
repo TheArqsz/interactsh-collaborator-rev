@@ -11,6 +11,9 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -19,6 +22,7 @@ import javax.crypto.spec.PSource;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import burp.api.montoya.http.HttpService;
@@ -38,6 +42,12 @@ public class InteractshClient {
 		return burp.BurpExtender.api != null && !burp.BurpExtender.unloading;
 	}
 
+	private static void logError(String message) {
+		if (isExtensionActive()) {
+			burp.BurpExtender.api.logging().logToError(message);
+		}
+	}
+
 	@Getter
 	private final String correlationId;
 	private final String secretKey;
@@ -46,6 +56,10 @@ public class InteractshClient {
 	private volatile String probeLabel;
 	private volatile boolean probeSeen;
 	private final String pubKeyBase64;
+	// Decryption failures since the last register() or verifyCallback() call.
+	private final AtomicInteger decryptFailures = new AtomicInteger();
+	// Message for the UI about the most recent decryption failure, taken once by the listener.
+	private final AtomicReference<String> pendingDecryptNotice = new AtomicReference<>();
 
 	private String host;
 	private int port;
@@ -57,6 +71,28 @@ public class InteractshClient {
 	@Getter
 	private volatile String lastError;
 	private String authorization;
+
+	/** A decrypted record together with the AES mode that produced it. */
+	static final class Decrypted {
+		final String mode;
+		final byte[] raw;
+		final String plain;
+
+		Decrypted(String mode, byte[] raw) {
+			this.mode = mode;
+			this.raw = raw;
+			this.plain = new String(raw, StandardCharsets.UTF_8).trim();
+		}
+	}
+
+	/** Thrown when a record does not decrypt to JSON under the configured AES mode. */
+	static final class AesModeException extends Exception {
+		private static final long serialVersionUID = 1L;
+
+		AesModeException(String message) {
+			super(message);
+		}
+	}
 
 	public InteractshClient() {
 		this(burp.gui.Config.getHost(), savedPort(), burp.gui.Config.getScheme(), burp.gui.Config.getAuth(),
@@ -98,6 +134,7 @@ public class InteractshClient {
 
 	public boolean register() {
 		this.lastError = null;
+		resetDecryptState();
 		if (!isExtensionActive())
 			return false;
 
@@ -152,6 +189,7 @@ public class InteractshClient {
 				burp.BurpExtender.debugLog("Session registration was successful.");
 				return true;
 			} else if (resp.statusCode() == 401) {
+				burp.BurpExtender.debugLog("Registration rejected with status 401.");
 				this.lastError = (authorization == null || authorization.isEmpty())
 						? "Server requires a token - set Token in Configuration."
 						: "Server rejected the token - check Token in Configuration.";
@@ -159,12 +197,14 @@ public class InteractshClient {
 					burp.BurpExtender.api.logging().logToError("Registration failed: " + lastError);
 				}
 			} else {
+				burp.BurpExtender.debugLog("Registration failed with status " + resp.statusCode() + ": " + truncate(resp.bodyToString(), 200));
 				if (isExtensionActive()) {
 					burp.BurpExtender.api.logging().logToError(
 							"Registration failed with status " + resp.statusCode() + ": " + resp.bodyToString());
 				}
 			}
 		} catch (Exception ex) {
+			burp.BurpExtender.debugLog("Registration error: " + ex);
 			this.lastError = isUnknownHost(ex)
 					? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
 					: "Registration error: " + ex.getMessage();
@@ -173,6 +213,10 @@ public class InteractshClient {
 			}
 		}
 		return false;
+	}
+
+	private static String truncate(String s, int max) {
+		return s == null || s.length() <= max ? String.valueOf(s) : s.substring(0, max);
 	}
 
 	private static boolean isUnknownHost(Throwable ex) {
@@ -196,6 +240,7 @@ public class InteractshClient {
 	public boolean verifyCallback() {
 		String probeHost = getInteractDomain();
 		this.probeSeen = false;
+		this.decryptFailures.set(0);
 		this.probeLabel = probeHost.substring(0, probeHost.indexOf('.'));
 		burp.BurpExtender.debugLog("Verifying session with a test callback to " + probeHost);
 		try {
@@ -241,6 +286,7 @@ public class InteractshClient {
 			HttpRequest httpRequest = HttpRequest.httpRequest(httpService, request);
 			resp = burp.BurpExtender.api.http().sendRequest(httpRequest).response();
 		} catch (Exception ex) {
+			burp.BurpExtender.debugLog("Poll: request error: " + ex);
 			if (isExtensionActive()) {
 				burp.BurpExtender.api.logging().logToError(isUnknownHost(ex)
 						? "Poll failed - cannot resolve host '" + host + "'."
@@ -251,6 +297,7 @@ public class InteractshClient {
 		if (resp == null || resp.statusCode() != 200) {
 			String body = (resp != null) ? resp.bodyToString() : null;
 			this.sessionLost = body != null && body.contains(SESSION_NOT_FOUND);
+			burp.BurpExtender.debugLog("Poll: HTTP " + (resp != null ? resp.statusCode() : "no response"));
 			if (isExtensionActive()) {
 				burp.BurpExtender.api.logging().logToError("Poll failed - status: "
 						+ (resp != null ? resp.statusCode() : "no response")
@@ -261,6 +308,7 @@ public class InteractshClient {
 
 		String responseBody = resp.bodyToString();
 		if (responseBody == null || responseBody.isEmpty()) {
+			burp.BurpExtender.debugLog("Poll: HTTP 200, 0 records (empty response)");
 			return true;
 		}
 
@@ -268,25 +316,22 @@ public class InteractshClient {
 			JSONObject jsonObject = new JSONObject(responseBody);
 			String aesKey = jsonObject.getString("aes_key");
 			byte[] key = this.decryptAesKey(aesKey);
-			if (!jsonObject.isNull("data")) {
-				JSONArray data = jsonObject.getJSONArray("data");
-				for (int i = 0; i < data.length(); i++) {
-					String decryptedData = decryptData(data.getString(i), key);
-					if (probeLabel != null && decryptedData.contains(probeLabel)) {
-						probeSeen = true;
-						continue;
-					}
-					if (isExtensionActive() && testAesMode == null) {
-						InteractshEntry entry = new InteractshEntry(decryptedData);
-						burp.BurpExtender.addToTable(entry);
-					}
-				}
+			int dataCount = 0;
+			JSONArray data = jsonObject.optJSONArray("data");
+			if (data != null) {
+				dataCount = data.length();
+				processRecords(data, key, this::handleDecrypted);
 			}
 			// Token-scoped interactions (FTP, SMB, Responder, LDAP full logging) are
 			// returned unencrypted in a separate field.
+			int extraCount = arrayLength(jsonObject, "extra");
+			int tlddataCount = arrayLength(jsonObject, "tlddata");
 			addPlainInteractions(jsonObject, "extra", false);
 			addPlainInteractions(jsonObject, "tlddata", true);
+			burp.BurpExtender.debugLog("Poll: HTTP 200, " + (dataCount + extraCount + tlddataCount) + " records (data "
+					+ dataCount + ", extra " + extraCount + ", tlddata " + tlddataCount + ")");
 		} catch (Exception ex) {
+			burp.BurpExtender.debugLog("Poll: could not process response: " + ex);
 			if (isExtensionActive()) {
 				String msg = isUnknownHost(ex)
 						? "Cannot resolve host '" + host + "' - please check the server address in Configuration."
@@ -295,6 +340,77 @@ public class InteractshClient {
 			}
 		}
 		return true;
+	}
+
+	private static int arrayLength(JSONObject object, String key) {
+		JSONArray array = object.optJSONArray(key);
+		return array == null ? 0 : array.length();
+	}
+
+	private void handleDecrypted(Decrypted decrypted) {
+		if (probeLabel != null && decrypted.plain.contains(probeLabel)) {
+			probeSeen = true;
+			return;
+		}
+		if (isExtensionActive() && testAesMode == null) {
+			burp.BurpExtender.addToTable(new InteractshEntry(decrypted.plain));
+		}
+	}
+
+	/**
+	 * Decrypts and handles each record independently: a record that fails to
+	 * decrypt or parse is logged and skipped, so the rest of the batch is still
+	 * processed. Returns the number of records that failed.
+	 */
+	int processRecords(JSONArray data, byte[] key, Consumer<Decrypted> sink) {
+		int failures = 0;
+		for (int i = 0; i < data.length(); i++) {
+			Decrypted decrypted;
+			try {
+				decrypted = decryptData(data.getString(i), key);
+			} catch (AesModeException ex) {
+				failures++;
+				recordDecryptFailure(ex.getMessage());
+				continue;
+			} catch (Exception ex) {
+				failures++;
+				String msg = "Could not decrypt an interaction: " + ex.getMessage();
+				burp.BurpExtender.debugLog("Record " + i + " decrypt failed: " + ex);
+				recordDecryptFailure(msg);
+				continue;
+			}
+			try {
+				sink.accept(decrypted);
+			} catch (Exception ex) {
+				failures++;
+				String msg = "Could not parse interaction (AES mode " + decrypted.mode + ", plaintext starts \""
+						+ preview(decrypted.raw) + "\"): " + ex.getMessage();
+				burp.BurpExtender.debugLog(msg);
+				logError(msg);
+			}
+		}
+		return failures;
+	}
+
+	private void recordDecryptFailure(String message) {
+		decryptFailures.incrementAndGet();
+		pendingDecryptNotice.set(message);
+		logError(message);
+	}
+
+	private void resetDecryptState() {
+		decryptFailures.set(0);
+		pendingDecryptNotice.set(null);
+	}
+
+	/** Number of records that failed to decrypt since the last register() or verifyCallback(). */
+	public int getDecryptFailures() {
+		return decryptFailures.get();
+	}
+
+	/** Returns the pending decryption failure message once, or null if there is none. */
+	public String takeDecryptNotice() {
+		return pendingDecryptNotice.getAndSet(null);
 	}
 
 	public void deregister() {
@@ -416,32 +532,45 @@ public class InteractshClient {
 		return cipher.doFinal(cipherTextArray);
 	}
 
-	private String decryptData(String input, byte[] key) throws Exception {
+	Decrypted decryptData(String input, byte[] key) throws Exception {
 		String configured = (testAesMode != null) ? testAesMode : burp.gui.Config.getAesMode();
 		String mode = (configured == null || configured.isEmpty()) ? "AUTO" : configured.toUpperCase();
 
 		if (!"AUTO".equals(mode)) {
-			return decryptDataWithMode(input, key, mode);
+			Decrypted decrypted = decryptWithMode(input, key, mode);
+			if (!isJsonDocument(decrypted.plain)) {
+				burp.BurpExtender.debugLog("Record did not decrypt as JSON with AES mode " + mode
+						+ "; plaintext starts \"" + preview(decrypted.raw) + "\"");
+				throw new AesModeException("Could not decrypt interaction with AES mode " + mode
+						+ "; the server likely uses a different mode, try AUTO.");
+			}
+			return decrypted;
 		}
 
 		// AUTO: try CTR first (public servers), then CFB (self-hosted servers).
-		String lastResult = null;
 		for (String candidate : new String[] { "CTR", "CFB" }) {
 			try {
-				String decrypted = decryptDataWithMode(input, key, candidate);
-				if (looksLikeJson(decrypted)) {
+				Decrypted decrypted = decryptWithMode(input, key, candidate);
+				if (isJsonDocument(decrypted.plain)) {
+					burp.BurpExtender.debugLog("AUTO picked AES mode " + candidate + ".");
 					return decrypted;
 				}
-				lastResult = decrypted;
-			} catch (Exception ignored) {
+				burp.BurpExtender.debugLog("AUTO: " + candidate + " did not produce JSON; plaintext starts \""
+						+ preview(decrypted.raw) + "\"");
+			} catch (Exception ex) {
+				burp.BurpExtender.debugLog("AUTO: " + candidate + " decryption threw: " + ex);
 			}
 		}
 
-		return lastResult != null ? lastResult : "";
+		throw new AesModeException("Could not decrypt interaction with AES mode AUTO (tried CTR and CFB); "
+				+ "the server likely uses a different mode, set AES Mode to the one the server uses.");
 	}
 
-	private String decryptDataWithMode(String input, byte[] key, String mode) throws Exception {
+	private Decrypted decryptWithMode(String input, byte[] key, String mode) throws Exception {
 		byte[] cipherTextArray = Base64.getDecoder().decode(input);
+		if (cipherTextArray.length <= 16) {
+			throw new IllegalArgumentException("encrypted record is too short");
+		}
 		byte[] iv = Arrays.copyOfRange(cipherTextArray, 0, 16);
 		byte[] cipherText = Arrays.copyOfRange(cipherTextArray, 16, cipherTextArray.length);
 
@@ -449,18 +578,47 @@ public class InteractshClient {
 		SecretKeySpec skeySpec = new SecretKeySpec(key, "AES");
 		Cipher cipher = Cipher.getInstance("AES/" + mode + "/NoPadding");
 		cipher.init(Cipher.DECRYPT_MODE, skeySpec, ivSpec);
-		byte[] decrypted = cipher.doFinal(cipherText);
-
-		return new String(decrypted, StandardCharsets.UTF_8).trim();
+		return new Decrypted(mode, cipher.doFinal(cipherText));
 	}
 
-	private boolean looksLikeJson(String value) {
+	private static boolean isJsonDocument(String value) {
+		if (!looksLikeJson(value)) {
+			return false;
+		}
+		try {
+			if (value.startsWith("{")) {
+				new JSONObject(value);
+			} else {
+				new JSONArray(value);
+			}
+			return true;
+		} catch (JSONException ex) {
+			return false;
+		}
+	}
+
+	private static boolean looksLikeJson(String value) {
 		if (value == null) {
 			return false;
 		}
 		String candidate = value.trim();
 		return (candidate.startsWith("{") && candidate.endsWith("}"))
 				|| (candidate.startsWith("[") && candidate.endsWith("]"));
+	}
+
+	/** First 16 bytes of plaintext with non-printable bytes escaped, for logs. */
+	static String preview(byte[] raw) {
+		StringBuilder sb = new StringBuilder();
+		int n = Math.min(16, raw.length);
+		for (int i = 0; i < n; i++) {
+			int b = raw[i] & 0xff;
+			if (b >= 0x20 && b < 0x7f) {
+				sb.append((char) b);
+			} else {
+				sb.append(String.format("\\x%02x", b));
+			}
+		}
+		return sb.toString();
 	}
 
 	private String[] splitStringEveryN(String s, int interval) {

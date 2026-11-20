@@ -17,6 +17,8 @@ public class InteractshListener {
 	private final Semaphore pollSignal = new Semaphore(0);
 	private volatile boolean stopped = false;
 	private volatile Consumer<Boolean> refreshCallback;
+	// Decryption-failure toasts are shown once per session; reset by resetDecryptNotice().
+	private volatile boolean decryptNoticeShown;
 	private static final long MIN_REFRESH_GAP_MS = 1000;
 
 	public InteractshListener(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
@@ -47,8 +49,17 @@ public class InteractshListener {
 						SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
 					}
 				} else if (!stopped && !burp.BurpExtender.unloading) {
-					String errorMsg = "Session registered, but the server did not record a test callback. "
-							+ "Check that the correlation ID lengths match the server's -cidl/-cidn.";
+					boolean decryptProblem = client.getDecryptFailures() > 0;
+					final String errorMsg = decryptProblem
+						? "Session registered, but the server did not record a test callback. "
+								+ "Check the correlation ID lengths and AES mode."
+						: "Session registered, but the server did not record a test callback. "
+								+ "Check that the correlation ID lengths match the server's -cidl/-cidn.";
+					if (decryptProblem) {
+						// This failure toast already reports the decryption problem.
+						decryptNoticeShown = true;
+						client.takeDecryptNotice();
+					}
 					if (burp.BurpExtender.api != null) {
 						burp.BurpExtender.api.logging().logToError(errorMsg);
 					}
@@ -64,8 +75,10 @@ public class InteractshListener {
 					boolean polled = false;
 					try {
 						polled = client.poll();
+						reportDecryptNotice(onFailureCallback);
 						if (!polled && client.isSessionLost() && !stopped) {
 							polled = client.register();
+							resetDecryptNotice();
 							if (polled && burp.BurpExtender.api != null) {
 								burp.BurpExtender.api.logging()
 										.logToOutput("Session was lost on the server and has been re-registered.");
@@ -123,6 +136,23 @@ public class InteractshListener {
 				client.deregister();
 			}
 		}
+	}
+
+	/** Shows the pending decryption-failure message, at most once per session. */
+	private void reportDecryptNotice(Consumer<String> onFailureCallback) {
+		String notice = client.takeDecryptNotice();
+		if (notice == null || decryptNoticeShown) {
+			return;
+		}
+		decryptNoticeShown = true;
+		if (onFailureCallback != null) {
+			SwingUtilities.invokeLater(() -> onFailureCallback.accept(notice));
+		}
+	}
+
+	/** Allows the next decryption failure to be shown again, e.g. after the AES mode changed. */
+	public void resetDecryptNotice() {
+		decryptNoticeShown = false;
 	}
 
 	public void close() {
