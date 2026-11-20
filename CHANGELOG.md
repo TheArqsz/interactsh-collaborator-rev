@@ -1,3 +1,11 @@
+## [1.6.1](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.6.0...v1.6.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **logging:** log registration attempts that fail before sending ([fd20f7b](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/fd20f7bee053f9024a4af4d3818ae4203c254063))
+* **polling:** log polling and decryption and report wrong aes mode ([5258bca](https://github.com/TheArqsz/interactsh-collaborator-rev/commit/5258bcaed8a85519fda76cd2abb395574802b839))
+
 ## [1.6.0](https://github.com/TheArqsz/interactsh-collaborator-rev/compare/v1.5.0...v1.6.0) (2026-10-01)
 
 
