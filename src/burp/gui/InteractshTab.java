@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -57,6 +58,7 @@ import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
 import burp.gui.ToastNotification.MessageType;
 import burp.listeners.InteractshListener;
+import interactsh.InteractshClient;
 import interactsh.InteractshEntry;
 import layout.SpringUtilities;
 import lombok.Getter;
@@ -82,6 +84,13 @@ public class InteractshTab extends JComponent {
 	private static JCheckBox tlsBox;
 	private static JComboBox<String> aesModeBox;
 	private static JCheckBox debugLoggingBox;
+	private static JCheckBox hideSharedBox;
+	private static JCheckBox hideWildcardBox;
+	private static JTextField cidLengthText;
+	private static JTextField cidNonceLengthText;
+
+	private TableRowSorter<TableModel> sorter;
+	private String selectedProtocol = "All";
 
 	private final List<InteractshEntry> log = new ArrayList<>();
 	private InteractshListener listener;
@@ -127,8 +136,9 @@ public class InteractshTab extends JComponent {
 		logTable = new Table(logTableModel);
 		tableSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 
-		TableRowSorter<TableModel> sorter = new TableRowSorter<>(logTableModel);
+		sorter = new TableRowSorter<>(logTableModel);
 		logTable.setRowSorter(sorter);
+		applyRowFilter();
 
 		List<RowSorter.SortKey> sortKeys = new ArrayList<>();
 		sortKeys.add(new RowSorter.SortKey(LogTable.Column.ID.ordinal(), SortOrder.DESCENDING));
@@ -168,7 +178,16 @@ public class InteractshTab extends JComponent {
 
 		JPanel controlsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		JButton generateUrlButton = new JButton("Regenerate Interactsh Session");
-		JButton copyUrlButton = new JButton("Copy URL to clipboard");
+		// Paint the background ourselves so the look and feel's hover state cannot
+		// replace the custom colour.
+		JButton copyUrlButton = new JButton("Copy URL to clipboard") {
+			@Override
+			protected void paintComponent(java.awt.Graphics g) {
+				g.setColor(getBackground());
+				g.fillRect(0, 0, getWidth(), getHeight());
+				super.paintComponent(g);
+			}
+		};
 		JButton refreshButton = new JButton("Refresh");
 		JButton clearLogButton = new JButton("Clear log");
 		JLabel pollLabel = new JLabel("Poll Time: ");
@@ -182,7 +201,8 @@ public class InteractshTab extends JComponent {
 		Color copyButtonHoverColor = new Color(190, 82, 35);
 		copyUrlButton.setBackground(copyButtonColor);
 		copyUrlButton.setForeground(Color.WHITE);
-		copyUrlButton.setOpaque(true);
+		copyUrlButton.setContentAreaFilled(false);
+		copyUrlButton.setOpaque(false);
 		copyUrlButton.setFont(copyUrlButton.getFont().deriveFont(Font.BOLD));
 		copyUrlButton.setBorderPainted(false);
 		copyUrlButton.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -208,7 +228,8 @@ public class InteractshTab extends JComponent {
 						}
 						try {
 							java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
-							if (sel != null) sel.setContents(stringSelection, null);
+							if (sel != null)
+								sel.setContents(stringSelection, null);
 						} catch (Exception ex) {
 						}
 						ToastNotification.showToast("✓ Regenerated and copied new Interact.sh URL.",
@@ -225,10 +246,15 @@ public class InteractshTab extends JComponent {
 			}
 		});
 		refreshButton.addActionListener(e -> {
-			if (this.listener.pollNowAll()) {
-				ToastNotification.showToast("Session refreshed.", MessageType.INFO);
-			} else {
-				ToastNotification.showToast("❌ Failed to refresh session.", MessageType.ERROR);
+			boolean hasSession = this.listener.pollNowAll(polled -> {
+				if (polled) {
+					ToastNotification.showToast("Session refreshed.", MessageType.INFO);
+				} else {
+					ToastNotification.showToast("❌ Refresh failed. See the extension's error log.", MessageType.ERROR);
+				}
+			});
+			if (!hasSession) {
+				ToastNotification.showToast("❌ Failed to refresh. No active session.", MessageType.ERROR);
 			}
 		});
 		clearLogButton.addActionListener(e -> this.clearLog());
@@ -249,18 +275,13 @@ public class InteractshTab extends JComponent {
 		filterLabel.setEnabled(false);
 		filterPanel.add(filterLabel);
 		ButtonGroup filterGroup = new ButtonGroup();
-		String[] protocols = { "All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "FTP" };
+		String[] protocols = { "All", "HTTP", "DNS", "SMTP", "LDAP", "SMB", "Responder", "FTP" };
 
 		for (String protocol : protocols) {
 			JToggleButton filterButton = new JToggleButton(protocol);
 			filterButton.addActionListener(e -> {
-				String selectedProtocol = filterButton.getText();
-				if ("All".equals(selectedProtocol)) {
-					sorter.setRowFilter(null);
-				} else {
-					sorter.setRowFilter(RowFilter.regexFilter("(?i)" + selectedProtocol,
-							LogTable.Column.TYPE.ordinal()));
-				}
+				selectedProtocol = filterButton.getText();
+				applyRowFilter();
 			});
 
 			filterGroup.add(filterButton);
@@ -281,10 +302,11 @@ public class InteractshTab extends JComponent {
 		mainPane.addTab("Configuration", configPanel);
 		configPanel.add(subConfigPanel);
 		JPanel innerConfig = new JPanel();
-		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 250));
+		subConfigPanel.setMaximumSize(new Dimension(configPanel.getMaximumSize().width, 540));
 		innerConfig.setLayout(new SpringLayout());
 		subConfigPanel.add(innerConfig);
 
+		String restartNote = " Changing this starts a new session.";
 		serverText = new JTextField(Config.getHost(), 20);
 		portText = new JTextField(Config.getPort(), 20);
 		authText = new JTextField(Config.getAuth(), 20);
@@ -295,21 +317,47 @@ public class InteractshTab extends JComponent {
 		aesModeBox.setSelectedItem(Config.getAesMode());
 		debugLoggingBox = new JCheckBox("", false);
 		debugLoggingBox.setSelected(Config.isDebugEnabled());
+		hideSharedBox = new JCheckBox("", true);
+		hideSharedBox.setSelected(Config.isHideShared());
+		hideWildcardBox = new JCheckBox("", false);
+		hideWildcardBox.setSelected(Config.isHideWildcard());
+		cidLengthText = new JTextField(String.valueOf(Config.getCidLength()), 20);
+		cidNonceLengthText = new JTextField(String.valueOf(Config.getCidNonceLength()), 20);
 
-		innerConfig.add(new JLabel("Server: ", SwingConstants.TRAILING));
-		innerConfig.add(serverText);
-		innerConfig.add(new JLabel("Port: ", SwingConstants.TRAILING));
-		innerConfig.add(portText);
-		innerConfig.add(new JLabel("Authorization: ", SwingConstants.TRAILING));
-		innerConfig.add(authText);
-		innerConfig.add(new JLabel("Poll Interval (sec): ", SwingConstants.TRAILING));
-		innerConfig.add(pollText);
-		innerConfig.add(new JLabel("TLS: ", SwingConstants.TRAILING));
-		innerConfig.add(tlsBox);
-		innerConfig.add(new JLabel("AES Mode: ", SwingConstants.TRAILING));
-		innerConfig.add(aesModeBox);
-		innerConfig.add(new JLabel("Debug Logging: ", SwingConstants.TRAILING));
-		innerConfig.add(debugLoggingBox);
+		addConfigHeading(innerConfig, "Server");
+		addConfigRow(innerConfig, "Server: ", serverText,
+				"Hostname of the interactsh server, without scheme or port." + restartNote);
+		addConfigRow(innerConfig, "Port: ", portText,
+				"Port of the server's HTTP(S) API, usually 443 with TLS and 80 without." + restartNote);
+		addConfigRow(innerConfig, "TLS: ", tlsBox, "Connect to the server over HTTPS." + restartNote);
+		addConfigRow(innerConfig, "Token: ", authText,
+				"Token for servers started with -auth or -token. Leave empty for public servers." + restartNote);
+
+		addConfigHeading(innerConfig, "Server compatibility");
+		addConfigRow(innerConfig, "Correlation ID length: ", cidLengthText,
+				"Must match the server's -cidl value (default 20)." + restartNote);
+		addConfigRow(innerConfig, "Nonce length: ", cidNonceLengthText,
+				"Must match the server's -cidn value (default 13)." + restartNote);
+		addConfigRow(innerConfig, "AES Mode: ", aesModeBox,
+				"Cipher mode used to decrypt interactions. AUTO tries CTR (current servers) and then CFB (older "
+						+ "self-hosted servers).");
+
+		addConfigHeading(innerConfig, "Polling");
+		addConfigRow(innerConfig, "Poll Interval (sec): ", pollText,
+				"Seconds between automatic polls. The Refresh button polls immediately.");
+
+		addConfigHeading(innerConfig, "Display");
+		addConfigRow(innerConfig, "Hide shared interactions: ", hideSharedBox,
+				"Hide interactions the server cannot tie to a session (FTP, SMB, Responder, "
+						+ "LDAP full logging). Token-authenticated servers send these to every client.");
+		addConfigRow(innerConfig, "Hide wildcard interactions: ", hideWildcardBox,
+				"Hide interactions with the server's root domain that do not belong to this "
+						+ "session. Servers started with -wildcard send these to every client.");
+
+		addConfigHeading(innerConfig, "Diagnostics");
+		addConfigRow(innerConfig, "Debug Logging: ", debugLoggingBox,
+				"Log registration, polling and decryption details. Output goes to Extensions > this extension "
+						+ "> Output tab in Burp.");
 
 		JButton updateConfigButton = new JButton("Update Settings");
 		updateConfigButton.addActionListener(e -> {
@@ -317,17 +365,34 @@ public class InteractshTab extends JComponent {
 			String oldPort = burp.gui.Config.getPort();
 			String oldAuth = burp.gui.Config.getAuth();
 			Boolean oldTls = burp.gui.Config.getScheme();
+			int oldCidLength = burp.gui.Config.getCidLength();
+			int oldCidNonceLength = burp.gui.Config.getCidNonceLength();
+			String oldAesMode = burp.gui.Config.getAesMode();
 
 			String newServer = serverText.getText();
-			String newPort = portText.getText();
+			String enteredPort = portText.getText();
+			String newPort = Config.validPort(enteredPort, tlsBox.isSelected());
+			portText.setText(newPort);
+			if (!newPort.equals(enteredPort.trim())) {
+				api.logging().logToError("Invalid port '" + enteredPort + "' - reset to " + newPort + ".");
+			}
 			String newAuth = authText.getText();
 			Boolean newTls = tlsBox.isSelected();
 
 			burp.gui.Config.updateConfig();
+			burp.BurpExtender.debugLog("Debug logging enabled");
+			if (!Objects.equals(oldAesMode, burp.gui.Config.getAesMode())) {
+				this.listener.resetDecryptNotice();
+			}
+			cidLengthText.setText(String.valueOf(Config.getCidLength()));
+			cidNonceLengthText.setText(String.valueOf(Config.getCidNonceLength()));
 			pollField.setText(pollText.getText());
+			applyRowFilter();
+			updateUnreadCount();
 
 			boolean criticalSettingChanged = !oldServer.equals(newServer)
-					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls;
+					|| !oldPort.equals(newPort) || !oldAuth.equals(newAuth) || oldTls != newTls
+					|| oldCidLength != Config.getCidLength() || oldCidNonceLength != Config.getCidNonceLength();
 
 			if (criticalSettingChanged) {
 				burp.BurpExtender.debugLog("Server configuration changed. Creating new Interact.sh session.");
@@ -340,10 +405,57 @@ public class InteractshTab extends JComponent {
 				ToastNotification.showToast("Settings saved.", MessageType.SUCCESS);
 			}
 		});
+		JButton testConfigButton = new JButton("Test Settings");
+		testConfigButton.setToolTipText("Try the values above against the server without saving them: registers a "
+				+ "temporary session, checks that a test callback is recorded, then removes it.");
+		testConfigButton.addActionListener(e -> {
+			String host = serverText.getText().trim();
+			boolean tls = tlsBox.isSelected();
+			String enteredPort = portText.getText();
+			String port = Config.validPort(enteredPort, tls);
+			if (!port.equals(enteredPort.trim())) {
+				ToastNotification.showToast("❌ Invalid port '" + enteredPort + "'.", MessageType.ERROR);
+				return;
+			}
+			InteractshClient testClient = InteractshClient.forTest(host, Integer.parseInt(port), tls,
+					authText.getText(), Config.validCidLength(cidLengthText.getText()),
+					Config.validCidNonceLength(cidNonceLengthText.getText()), (String) aesModeBox.getSelectedItem());
+			testConfigButton.setEnabled(false);
+			ToastNotification.showToast("Testing settings...", MessageType.INFO);
+			new Thread(() -> {
+				String error = null;
+				try {
+					if (!testClient.register()) {
+						error = (testClient.getLastError() != null) ? testClient.getLastError()
+								: "Registration failed. See the extension's error log.";
+					} else if (!testClient.verifyCallback()) {
+						error = "Registered, but the server did not record a test callback. "
+								+ "Check the correlation ID lengths and AES mode.";
+					}
+				} catch (RuntimeException ex) {
+					error = "Test failed: " + ex.getMessage();
+				} finally {
+					if (testClient.isRegistered()) {
+						testClient.deregister();
+					}
+				}
+				String result = error;
+				SwingUtilities.invokeLater(() -> {
+					testConfigButton.setEnabled(true);
+					if (result == null) {
+						ToastNotification.showToast("✓ Settings work. Nothing was saved.", MessageType.SUCCESS);
+					} else {
+						ToastNotification.showToast("❌ " + result, MessageType.ERROR);
+					}
+				});
+			}).start();
+		});
+		JPanel testButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+		testButtonPanel.add(testConfigButton);
 		innerConfig.add(updateConfigButton);
-		innerConfig.add(new JPanel());
+		innerConfig.add(testButtonPanel);
 
-		SpringUtilities.makeCompactGrid(innerConfig, 8, 2, // rows, cols
+		SpringUtilities.makeCompactGrid(innerConfig, 17, 2, // rows, cols
 				6, 6, // initX, initY
 				6, 6); // xPad, yPad
 
@@ -359,6 +471,21 @@ public class InteractshTab extends JComponent {
 		configPanel.add(documentationPanel);
 
 		add(mainPane);
+	}
+
+	private static void addConfigHeading(JPanel panel, String title) {
+		JLabel heading = new JLabel(title, SwingConstants.LEADING);
+		heading.setFont(heading.getFont().deriveFont(Font.BOLD));
+		panel.add(heading);
+		panel.add(new JPanel());
+	}
+
+	private static void addConfigRow(JPanel panel, String label, JComponent field, String toolTip) {
+		JLabel rowLabel = new JLabel(label, SwingConstants.TRAILING);
+		rowLabel.setToolTipText(toolTip);
+		field.setToolTipText(toolTip);
+		panel.add(rowLabel);
+		panel.add(field);
 	}
 
 	public InteractshListener getListener() {
@@ -421,6 +548,54 @@ public class InteractshTab extends JComponent {
 		debugLoggingBox.setSelected(value);
 	}
 
+	public static String getCidLengthText() {
+		return cidLengthText.getText();
+	}
+
+	public static void setCidLengthText(String text) {
+		cidLengthText.setText(text);
+	}
+
+	public static String getCidNonceLengthText() {
+		return cidNonceLengthText.getText();
+	}
+
+	public static void setCidNonceLengthText(String text) {
+		cidNonceLengthText.setText(text);
+	}
+
+	public static String getHideWildcard() {
+		return Boolean.toString(hideWildcardBox.isSelected());
+	}
+
+	public static void setHideWildcard(boolean value) {
+		hideWildcardBox.setSelected(value);
+	}
+
+	public static String getHideShared() {
+		return Boolean.toString(hideSharedBox.isSelected());
+	}
+
+	public static void setHideShared(boolean value) {
+		hideSharedBox.setSelected(value);
+	}
+
+	private void applyRowFilter() {
+		boolean hideShared = Config.isHideShared();
+		boolean hideWildcard = Config.isHideWildcard();
+		String protocol = selectedProtocol.toLowerCase();
+		sorter.setRowFilter(new RowFilter<TableModel, Integer>() {
+			@Override
+			public boolean include(Entry<? extends TableModel, ? extends Integer> entry) {
+				InteractshEntry ie = log.get(entry.getIdentifier());
+				if ((hideShared && ie.isShared()) || (hideWildcard && ie.wildcard)) {
+					return false;
+				}
+				return "all".equals(protocol) || ie.protocol.toLowerCase().contains(protocol);
+			}
+		});
+	}
+
 	private JEditorPane createClickableLink(String html) {
 		JEditorPane editorPane = new JEditorPane("text/html", html);
 		editorPane.setEditable(false);
@@ -445,7 +620,8 @@ public class InteractshTab extends JComponent {
 					}
 					try {
 						java.awt.datatransfer.Clipboard sel = Toolkit.getDefaultToolkit().getSystemSelection();
-						if (sel != null) sel.setContents(stringSelection, null);
+						if (sel != null)
+							sel.setContents(stringSelection, null);
 					} catch (Exception ex) {
 					}
 					api.logging().logToOutput(
@@ -461,7 +637,10 @@ public class InteractshTab extends JComponent {
 		if (parent instanceof JTabbedPane tabbedPane) {
 			int tabIndex = tabbedPane.indexOfComponent(this);
 			if (tabIndex != -1) {
-				long unreadCount = log.stream().filter(e -> !e.isRead()).count();
+				boolean hideShared = Config.isHideShared();
+				boolean hideWildcard = Config.isHideWildcard();
+				long unreadCount = log.stream().filter(e -> !e.isRead() && !(hideShared && e.isShared())
+						&& !(hideWildcard && e.wildcard)).count();
 				String newTitle = "Interactsh";
 				if (unreadCount > 0) {
 					newTitle += " (" + unreadCount + ")";
@@ -547,6 +726,7 @@ public class InteractshTab extends JComponent {
 			Font originalFont = getFont();
 			this.plainFont = originalFont.deriveFont(Font.PLAIN);
 			this.boldFont = originalFont.deriveFont(Font.BOLD);
+			putClientProperty("html.disable", Boolean.TRUE);
 		}
 
 		@Override
@@ -626,7 +806,10 @@ public class InteractshTab extends JComponent {
 				case ID:
 					return rowIndex + 1;
 				case ENTRY:
-					return ie.uid;
+					if (ie.wildcard) {
+						return ie.uid + " (wildcard)";
+					}
+					return ie.isShared() ? "(shared)" : ie.uid;
 				case TYPE:
 					return ie.protocol;
 				case SOURCE_IP:
@@ -640,6 +823,6 @@ public class InteractshTab extends JComponent {
 	}
 
 	public void cleanup() {
-		listener.close();
+		listener.closeAndWait();
 	}
 }

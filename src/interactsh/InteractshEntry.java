@@ -19,6 +19,7 @@ public class InteractshEntry {
 	public String rawResponse;
 	public String address;
 	public Instant timestamp;
+	public boolean wildcard;
 
 	@Getter
 	@Setter
@@ -45,6 +46,14 @@ public class InteractshEntry {
 			this.httpResponse = null;
 			this.details = formatDetails(jsonObject);
 		}
+	}
+
+	/**
+	 * Interactions without a unique ID are not tied to a session: the server
+	 * hands them to every client authenticated with its token.
+	 */
+	public boolean isShared() {
+		return uid == null || uid.isEmpty();
 	}
 
 	private String formatDetails(JSONObject obj) {

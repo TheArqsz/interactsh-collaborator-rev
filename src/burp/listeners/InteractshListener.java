@@ -16,6 +16,10 @@ public class InteractshListener {
 	private volatile InteractshClient client;
 	private final Semaphore pollSignal = new Semaphore(0);
 	private volatile boolean stopped = false;
+	private volatile Consumer<Boolean> refreshCallback;
+	// Decryption-failure toasts are shown once per session; reset by resetDecryptNotice().
+	private volatile boolean decryptNoticeShown;
+	private static final long MIN_REFRESH_GAP_MS = 1000;
 
 	public InteractshListener(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
 		this.executor = Executors.newSingleThreadExecutor();
@@ -23,43 +27,92 @@ public class InteractshListener {
 	}
 
 	private void pollingLoop(Consumer<String> onReadyCallback, Consumer<String> onFailureCallback) {
-		String host = burp.gui.Config.getHost();
-		try {
-			java.net.InetAddress.getByName(host);
-		} catch (java.net.UnknownHostException e) {
-			String errorMsg = "Cannot resolve host '" + host + "' - please check the server address in Configuration.";
-			if (burp.BurpExtender.api != null) {
-				burp.BurpExtender.api.logging().logToError(errorMsg);
-			}
-			if (onFailureCallback != null) {
-				SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
-			}
-			return;
-		}
-
 		try {
 			this.client = new InteractshClient();
 			if (client.register()) {
 				Thread.interrupted();
+				if (stopped) {
+					burp.BurpExtender.debugLog("Discarding session " + client.getCorrelationId()
+							+ ": listener was closed during registration.");
+					return;
+				}
 				String newUrl = client.getInteractDomain();
 				if (burp.BurpExtender.api != null) {
 					burp.BurpExtender.api.logging().logToOutput("Session URL: " + newUrl);
 				}
-				if (onReadyCallback != null) {
-					SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
+				if (client.verifyCallback()) {
+					if (burp.BurpExtender.api != null) {
+						burp.BurpExtender.api.logging()
+								.logToOutput("Session verified: server recorded a test callback.");
+					}
+					if (onReadyCallback != null) {
+						SwingUtilities.invokeLater(() -> onReadyCallback.accept(newUrl));
+					}
+				} else if (!stopped && !burp.BurpExtender.unloading) {
+					boolean decryptProblem = client.getDecryptFailures() > 0;
+					final String errorMsg = decryptProblem
+						? "Session registered, but the server did not record a test callback. "
+								+ "Check the correlation ID lengths and AES mode."
+						: "Session registered, but the server did not record a test callback. "
+								+ "Check that the correlation ID lengths match the server's -cidl/-cidn.";
+					if (decryptProblem) {
+						// This failure toast already reports the decryption problem.
+						decryptNoticeShown = true;
+						client.takeDecryptNotice();
+					}
+					if (burp.BurpExtender.api != null) {
+						burp.BurpExtender.api.logging().logToError(errorMsg);
+					}
+					if (onFailureCallback != null) {
+						SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
+					}
 				}
 				while (!stopped && !burp.BurpExtender.unloading) {
-					client.poll();
+					long pollTime = 60;
+					long pollStarted = System.currentTimeMillis();
+					Consumer<Boolean> onRefreshed = refreshCallback;
+					refreshCallback = null;
+					boolean polled = false;
 					try {
-						long pollTime = burp.BurpExtender.getPollTime();
-						pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS);
+						polled = client.poll();
+						reportDecryptNotice(onFailureCallback);
+						if (!polled && client.isSessionLost() && !stopped) {
+							polled = client.register();
+							resetDecryptNotice();
+							if (polled && burp.BurpExtender.api != null) {
+								burp.BurpExtender.api.logging()
+										.logToOutput("Session was lost on the server and has been re-registered.");
+							}
+						}
+						pollTime = burp.BurpExtender.getPollTime();
+					} catch (RuntimeException ex) {
+						if (stopped || burp.BurpExtender.unloading) {
+							break;
+						}
+						if (burp.BurpExtender.api != null) {
+							burp.BurpExtender.api.logging().logToError("Polling error: " + ex);
+						}
+					}
+					if (onRefreshed != null && !stopped && !burp.BurpExtender.unloading) {
+						boolean result = polled;
+						SwingUtilities.invokeLater(() -> onRefreshed.accept(result));
+					}
+					try {
+						if (pollSignal.tryAcquire(pollTime, TimeUnit.SECONDS)) {
+							long wait = MIN_REFRESH_GAP_MS - (System.currentTimeMillis() - pollStarted);
+							if (wait > 0 && !stopped) {
+								Thread.sleep(wait);
+							}
+							pollSignal.drainPermits();
+						}
 					} catch (InterruptedException e) {
 						break;
 					}
 				}
-			} else {
-				String errorMsg = "Unable to register interactsh client. Check config.";
-				if (burp.BurpExtender.api != null) {
+			} else if (!stopped) {
+				String reason = client.getLastError();
+				String errorMsg = (reason != null) ? reason : "Unable to register interactsh client. Check config.";
+				if (reason == null && burp.BurpExtender.api != null) {
 					burp.BurpExtender.api.logging().logToError(errorMsg);
 				}
 				if (onFailureCallback != null) {
@@ -67,7 +120,9 @@ public class InteractshListener {
 				}
 			}
 		} catch (Throwable ex) {
-			String errorMsg = "Error during registration: " + ex;
+			String errorMsg = (client != null && client.isRegistered())
+					? "Polling stopped unexpectedly, regenerate the session: " + ex
+					: "Error during registration: " + ex;
 			if (burp.BurpExtender.api != null) {
 				burp.BurpExtender.api.logging().logToError(errorMsg);
 			}
@@ -75,10 +130,29 @@ public class InteractshListener {
 				SwingUtilities.invokeLater(() -> onFailureCallback.accept(errorMsg));
 			}
 		} finally {
-			if (!stopped && client != null && client.isRegistered()) {
+			if (client != null && client.isRegistered()) {
+				// close() interrupts this thread; clear the flag so the request can be sent.
+				Thread.interrupted();
 				client.deregister();
 			}
 		}
+	}
+
+	/** Shows the pending decryption-failure message, at most once per session. */
+	private void reportDecryptNotice(Consumer<String> onFailureCallback) {
+		String notice = client.takeDecryptNotice();
+		if (notice == null || decryptNoticeShown) {
+			return;
+		}
+		decryptNoticeShown = true;
+		if (onFailureCallback != null) {
+			SwingUtilities.invokeLater(() -> onFailureCallback.accept(notice));
+		}
+	}
+
+	/** Allows the next decryption failure to be shown again, e.g. after the AES mode changed. */
+	public void resetDecryptNotice() {
+		decryptNoticeShown = false;
 	}
 
 	public void close() {
@@ -86,28 +160,39 @@ public class InteractshListener {
 		pollSignal.release();
 		executor.shutdownNow();
 
-		new Thread(() -> {
-			try {
-				if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-					if (burp.BurpExtender.api != null) {
-						try {
-							burp.BurpExtender.api.logging().logToError("Polling task did not terminate in time.");
-						} catch (Exception ignore) {
-						}
-					}
-				}
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			}
-		}).start();
+		new Thread(this::awaitTermination).start();
 	}
 
-	public boolean pollNowAll() {
-		InteractshClient currentClient = this.client;
-		if (currentClient != null && currentClient.isRegistered()) {
-			pollSignal.release();
+	public void closeAndWait() {
+		stopped = true;
+		pollSignal.release();
+		executor.shutdownNow();
+		awaitTermination();
+	}
+
+	private void awaitTermination() {
+		try {
+			if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+				if (burp.BurpExtender.api != null) {
+					try {
+						burp.BurpExtender.api.logging().logToError("Polling task did not terminate in time.");
+					} catch (Exception ignore) {
+					}
+				}
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
 		}
-		return currentClient != null && currentClient.isRegistered();
+	}
+
+	public boolean pollNowAll(Consumer<Boolean> onResult) {
+		InteractshClient currentClient = this.client;
+		if (currentClient == null || !currentClient.isRegistered()) {
+			return false;
+		}
+		refreshCallback = onResult;
+		pollSignal.release();
+		return true;
 	}
 
 	public boolean copyCurrentUrlToClipboard() {
